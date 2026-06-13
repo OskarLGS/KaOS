@@ -22,10 +22,9 @@ typedef struct window {
     char     title[64];
     int      visible;
     int      focused;
-    // Optional: per-window paint callback
-    void   (*on_paint)(struct window* self);
-    void   (*on_resize)(struct window* self);
-    int      min_w, min_h;
+    void   (*on_paint)(struct window* self);   // optional — called every redraw
+    void   (*on_resize)(struct window* self);  // optional — called on mouse release after resize
+    int      min_w, min_h;                     // minimum dimensions enforced during resize
 } window_t;
 
 void wm_init();
