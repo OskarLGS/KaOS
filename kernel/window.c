@@ -222,10 +222,13 @@ void wm_on_mouse_move(int x, int y) {
         }
 
         // Screen clamp
-        if (w->x < 0) w->x = 0;
+        if (w->x < 0) { w->w += w->x; w->x = 0; }          // left edge: shrink w, keep right side
         if (w->y < 0) w->y = 0;
-        if (w->x + w->w > 800)       w->x = 800 - w->w;
+        if (w->x + w->w > 800)       w->w = 800 - w->x;    // right edge: shrink w, keep left side
         if (w->y + w->h > TASKBAR_Y) w->h = TASKBAR_Y - w->y;
+        // Re-apply min clamp after screen clamp (screen edge may violate min)
+        if (w->w < w->min_w) w->w = w->min_w;
+        if (w->h < w->min_h) w->h = w->min_h;
     }
 
     cursor_set_pos(x, y);
