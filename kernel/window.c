@@ -13,6 +13,21 @@ static int drag_win    = -1;
 static int drag_off_x  = 0;
 static int drag_off_y  = 0;
 
+typedef enum {
+    RESIZE_NONE,
+    RESIZE_RIGHT,
+    RESIZE_LEFT,
+    RESIZE_BOTTOM,
+    RESIZE_BR,
+    RESIZE_BL
+} resize_dir_t;
+
+static resize_dir_t resize_dir    = RESIZE_NONE;
+static int          resize_win    = -1;
+static int          resize_orig_x = 0, resize_orig_y = 0;
+static int          resize_orig_w = 0, resize_orig_h = 0;
+static int          resize_start_x= 0, resize_start_y= 0;
+
 static int z_order[MAX_WINDOWS];
 static int z_count = 0;
 
@@ -61,6 +76,14 @@ static void draw_window(int idx) {
     draw_rect(btn_x, btn_y, 14, 14, WIN_COLOR_CLOSE_BTN);
     draw_string(btn_x + 3, btn_y + 3, "x", WIN_COLOR_TITLE_TXT);
 
+    // Resize grip — bottom-right corner indicator
+    int gx = w->x + w->w - 10;
+    int gy = w->y + w->h - 4;
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            if ((i + j) % 2 == 0)
+                draw_pixel(gx + i * 3, gy - j * 3, 0x888888);
+
     // Let the window paint its own content if it has a callback
     if (w->on_paint) w->on_paint(w);
 }
@@ -82,6 +105,8 @@ void wm_init() {
     z_count     = 0;
     focused_win = -1;
     drag_active = 0;
+    resize_dir = RESIZE_NONE;
+    resize_win = -1;
 }
 
 window_t* wm_get_focused() {
@@ -174,6 +199,35 @@ void wm_draw_all() {
 // ─── Input handling ───────────────────────────────────────────────────────────
 
 void wm_on_mouse_move(int x, int y) {
+    if (resize_dir != RESIZE_NONE && resize_win >= 0) {
+        window_t* w = &windows[resize_win];
+        int dx = x - resize_start_x;
+        int dy = y - resize_start_y;
+
+        if (resize_dir == RESIZE_RIGHT || resize_dir == RESIZE_BR) {
+            int nw = resize_orig_w + dx;
+            if (nw < w->min_w) nw = w->min_w;
+            w->w = nw;
+        }
+        if (resize_dir == RESIZE_LEFT || resize_dir == RESIZE_BL) {
+            int nw = resize_orig_w - dx;
+            if (nw < w->min_w) nw = w->min_w;
+            w->x = resize_orig_x + resize_orig_w - nw;
+            w->w = nw;
+        }
+        if (resize_dir == RESIZE_BOTTOM || resize_dir == RESIZE_BR || resize_dir == RESIZE_BL) {
+            int nh = resize_orig_h + dy;
+            if (nh < w->min_h) nh = w->min_h;
+            w->h = nh;
+        }
+
+        // Screen clamp
+        if (w->x < 0) w->x = 0;
+        if (w->y < 0) w->y = 0;
+        if (w->x + w->w > 800)       w->x = 800 - w->w;
+        if (w->y + w->h > TASKBAR_Y) w->h = TASKBAR_Y - w->y;
+    }
+
     cursor_set_pos(x, y);
 
     if (drag_active && drag_win >= 0) {
@@ -205,6 +259,20 @@ static void minimize_window(int i) {
         int jdx = z_order[j];
         if (windows[jdx].visible) { focused_win = jdx; windows[jdx].focused = 1; break; }
     }
+}
+
+static resize_dir_t detect_resize_zone(window_t* w, int x, int y) {
+    int on_right  = (x >= w->x + w->w - RESIZE_ZONE && x <= w->x + w->w + RESIZE_ZONE);
+    int on_left   = (x >= w->x - RESIZE_ZONE         && x <= w->x + RESIZE_ZONE);
+    int on_bottom = (y >= w->y + w->h - RESIZE_ZONE  && y <= w->y + w->h + RESIZE_ZONE);
+    int below_tb  = (y > w->y + TITLEBAR_H);
+
+    if (on_bottom && on_right) return RESIZE_BR;
+    if (on_bottom && on_left)  return RESIZE_BL;
+    if (on_right  && below_tb) return RESIZE_RIGHT;
+    if (on_left   && below_tb) return RESIZE_LEFT;
+    if (on_bottom)             return RESIZE_BOTTOM;
+    return RESIZE_NONE;
 }
 
 void wm_on_mouse_click(int x, int y, uint8_t buttons) {
@@ -274,6 +342,20 @@ void wm_on_mouse_click(int x, int y, uint8_t buttons) {
                     return;
                 }
 
+                // Resize zone? (checked before title-bar drag)
+                resize_dir_t rdir = detect_resize_zone(w, x, y);
+                if (rdir != RESIZE_NONE) {
+                    resize_dir     = rdir;
+                    resize_win     = idx;
+                    resize_orig_x  = w->x;
+                    resize_orig_y  = w->y;
+                    resize_orig_w  = w->w;
+                    resize_orig_h  = w->h;
+                    resize_start_x = x;
+                    resize_start_y = y;
+                    return;
+                }
+
                 // Title bar drag?
                 if (y >= w->y && y < w->y + TITLEBAR_H) {
                     drag_active = 1;
@@ -288,6 +370,12 @@ void wm_on_mouse_click(int x, int y, uint8_t buttons) {
         if (focused_win >= 0) { windows[focused_win].focused = 0; focused_win = -1; }
     } else {
         // Button released
+        if (resize_dir != RESIZE_NONE && resize_win >= 0) {
+            window_t* rw = &windows[resize_win];
+            if (rw->visible && rw->on_resize) rw->on_resize(rw);
+            resize_dir = RESIZE_NONE;
+            resize_win = -1;
+        }
         drag_active = 0;
         drag_win    = -1;
     }
