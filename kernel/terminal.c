@@ -6,17 +6,23 @@
 
 // Grid sized for the 500x350 Terminal window: client area is 500x330,
 // minus 6px padding on each side, at 8x8 pixels per character.
-#define TERM_COLS 60
-#define TERM_ROWS 38
+#define MAX_TERM_COLS 98
+#define MAX_TERM_ROWS 68
+#define CHAR_W 8
+#define CHAR_H 8
 #define TERM_PAD  6
 
 #define TERM_BG   0x1E1E1E
 #define TERM_FG   0xDADADA
 
 static window_t* term_win = 0;
-static char term_grid[TERM_ROWS][TERM_COLS];
+static char term_grid[MAX_TERM_ROWS][MAX_TERM_COLS];
+static int  term_cols = 60;
+static int  term_rows = 38;
 static int  term_cx = 0;
 static int  term_cy = 0;
+
+static char reflow_buf[MAX_TERM_COLS * MAX_TERM_ROWS + MAX_TERM_ROWS + 1];
 
 static char term_line[256];
 
@@ -24,8 +30,8 @@ window_t* terminal_window() { return term_win; }
 
 static void term_scroll() {
     memory_copy(&term_grid[1][0], &term_grid[0][0],
-                (TERM_ROWS - 1) * TERM_COLS);
-    memory_set((uint8_t*)&term_grid[TERM_ROWS - 1][0], ' ', TERM_COLS);
+                (term_rows - 1) * term_cols);
+    memory_set((uint8_t*)&term_grid[term_rows - 1][0], ' ', term_cols);
 }
 
 // Grid writer — also installed as the print sink while shell commands run,
@@ -42,12 +48,12 @@ static void term_putc(char c) {
     } else {
         term_grid[term_cy][term_cx] = c;
         term_cx++;
-        if (term_cx >= TERM_COLS) { term_cx = 0; term_cy++; }
+        if (term_cx >= term_cols) { term_cx = 0; term_cy++; }
     }
 
-    if (term_cy >= TERM_ROWS) {
+    if (term_cy >= term_rows) {
         term_scroll();
-        term_cy = TERM_ROWS - 1;
+        term_cy = term_rows - 1;
     }
 }
 
@@ -56,7 +62,7 @@ static void term_print(const char* s) {
 }
 
 static void term_clear() {
-    memory_set((uint8_t*)term_grid, ' ', sizeof(term_grid));
+    memory_set((uint8_t*)term_grid, ' ', term_rows * term_cols);
     term_cx = 0;
     term_cy = 0;
 }
@@ -68,8 +74,8 @@ static void terminal_paint(window_t* self) {
     // Terminal background (darker than the default window body)
     draw_rect(self->x, self->y + TITLEBAR_H, self->w, self->h - TITLEBAR_H, TERM_BG);
 
-    for (int r = 0; r < TERM_ROWS; r++)
-        for (int c = 0; c < TERM_COLS; c++)
+    for (int r = 0; r < term_rows; r++)
+        for (int c = 0; c < term_cols; c++)
             if (term_grid[r][c] != ' ')
                 draw_char(ox + c * 8, oy + r * 8, term_grid[r][c], TERM_FG);
 
@@ -77,9 +83,43 @@ static void terminal_paint(window_t* self) {
     draw_char(ox + term_cx * 8, oy + term_cy * 8, '_', 0x6FBF6F);
 }
 
+void terminal_on_resize(window_t* w) {
+    if (!w || !w->visible) return;
+
+    // 1. Serialize current grid into reflow_buf
+    int pos = 0;
+    for (int r = 0; r < term_rows; r++) {
+        int last = -1;
+        for (int c = 0; c < term_cols; c++)
+            if (term_grid[r][c] != ' ') last = c;
+        for (int c = 0; c <= last && pos < (int)sizeof(reflow_buf) - 2; c++)
+            reflow_buf[pos++] = term_grid[r][c];
+        if (pos < (int)sizeof(reflow_buf) - 1)
+            reflow_buf[pos++] = '\n';
+    }
+    reflow_buf[pos] = '\0';
+
+    // 2. Recalculate active dimensions
+    int nc = (w->w - 2 * TERM_PAD) / CHAR_W;
+    int nr = (w->h - TITLEBAR_H - 2 * TERM_PAD) / CHAR_H;
+    if (nc < 10) nc = 10;
+    if (nr <  4) nr =  4;
+    if (nc > MAX_TERM_COLS) nc = MAX_TERM_COLS;
+    if (nr > MAX_TERM_ROWS) nr = MAX_TERM_ROWS;
+    term_cols = nc;
+    term_rows = nr;
+
+    // 3. Clear and reprint
+    memory_set((uint8_t*)term_grid, ' ', sizeof(term_grid));
+    term_cx = 0;
+    term_cy = 0;
+    term_print(reflow_buf);
+}
+
 void terminal_init(window_t* win) {
     term_win = win;
     if (win) win->on_paint = terminal_paint;
+    if (win) win->on_resize = terminal_on_resize;
 
     term_clear();
     term_line[0] = '\0';
