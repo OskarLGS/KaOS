@@ -100,6 +100,9 @@ window_t* wm_create(int x, int y, int w, int h, const char* title) {
     win->visible = 1;
     win->focused = 0;
     win->on_paint = 0;
+    win->on_resize = 0;
+    win->min_w     = 200;
+    win->min_h     = TITLEBAR_H + 60;
 
     int i = 0;
     while (title[i] && i < 63) { win->title[i] = title[i]; i++; }

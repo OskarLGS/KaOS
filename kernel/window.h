@@ -6,6 +6,7 @@
 #define MAX_WINDOWS     8
 #define TITLEBAR_H      20
 #define WIN_BORDER      1
+#define RESIZE_ZONE     6
 
 // Colors
 #define WIN_COLOR_BG        0x2D2D2D
@@ -23,6 +24,8 @@ typedef struct window {
     int      focused;
     // Optional: per-window paint callback
     void   (*on_paint)(struct window* self);
+    void   (*on_resize)(struct window* self);
+    int      min_w, min_h;
 } window_t;
 
 void wm_init();
