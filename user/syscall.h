@@ -11,6 +11,8 @@
 #define SYS_GETPID  20
 #define SYS_SBRK    45
 #define SYS_SLEEP   162
+#define SYS_CONNECT 300
+#define SYS_RESOLVE 301
 
 // sys_open flags
 #define O_RDONLY  0x000
@@ -83,6 +85,19 @@ static inline void sys_sleep(int ms) {
 // Grow (or shrink) the heap; returns the previous break, or (void*)-1.
 static inline void* sys_sbrk(int increment) {
     return (void*)syscall3(SYS_SBRK, increment, 0, 0);
+}
+
+// --- Network (TCP client): a socket is a file descriptor -------------------
+
+// Resolve a host name (or "a.b.c.d") to an IPv4 address. 0 on success.
+static inline int sys_resolve(const char* name, unsigned int* ip) {
+    return syscall3(SYS_RESOLVE, (int)name, (int)ip, 0);
+}
+
+// Connect to ip:port. Returns an fd for sys_read_fd / sys_write_fd /
+// sys_close, -1 if unreachable, -2 if refused.
+static inline int sys_connect(unsigned int ip, int port) {
+    return syscall3(SYS_CONNECT, (int)ip, port, 0);
 }
 
 #endif

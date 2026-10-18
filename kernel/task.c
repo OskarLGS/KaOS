@@ -226,13 +226,17 @@ void task_sleep(uint32_t ticks) {
     while ((int32_t)(get_tick() - t->wake_tick) < 0) yield();
 }
 
-// Close every file a stopped task left open (called with IF=0).
+// Close every file a stopped task left open (called with IF=0, maybe
+// from an IRQ). Sockets just leave the table: the network task notices
+// their owner died and aborts the connection (closing one here would
+// have to sleep).
 static void close_files(task_t* t) {
     for (int fd = 0; fd < MAX_FDS; fd++) {
         if (t->files[fd].node) {
             vfs_release(t->files[fd].node);
             t->files[fd].node = 0;
         }
+        t->files[fd].sock = 0;
     }
 }
 

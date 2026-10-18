@@ -98,7 +98,8 @@ See [docs/users.md](docs/users.md).
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.
 - **System calls** — `int 0x80`: `exit`, `read`, `write`, `open`, `close`,
-  `getpid`, `sbrk`, `sleep` (file descriptors over the VFS).
+  `getpid`, `sbrk`, `sleep`, `connect`, `resolve` (files and TCP
+  sockets share one descriptor table).
 - **Programs** — `main(argc, argv)` with arguments from the shell, exit
   codes reported by the shell, Ctrl+C stops the foreground program,
   several programs at once (`exec disk/sleep.elf 5 &`).

@@ -132,6 +132,10 @@ From bare metal to a full operating system.
       (`ping`) → UDP → DHCP (al arrancar) → DNS (`host`) → TCP (cliente).
 - [x] **App de red**: `fetch host[:port]/ruta [> fichero]` (HTTP/1.0);
       verificado con una descarga de 63 KB idéntica byte a byte.
+- [x] **Sockets para programas**: `SYS_CONNECT`/`SYS_RESOLVE`; el socket
+      es un descriptor más (read/write/close). Demo: `wget.elf` en Ring 3.
+- [x] **Kernel más grande**: el hueco del kernel es un único parámetro
+      (`KERNEL_SECTORS` en build.sh), ahora 256 KB.
 - [ ] **Self-hosting**: Compilarse a sí mismo (necesita un compilador C
       portado... el jefe final).
 

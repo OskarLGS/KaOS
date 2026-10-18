@@ -57,6 +57,14 @@ ARP reply resolves it first, unlocked, and then sends under the lock.
 (`shell_run_job`): the prompt waits, output streams (the desktop stays
 live), Ctrl+C stops them.
 
+## Sockets for programs
+
+User programs reach TCP through two syscalls (see usermode.md):
+`SYS_RESOLVE` (DNS) and `SYS_CONNECT`, which returns a file descriptor
+used with the ordinary read/write/close. `user/wget.c` is the example.
+Lookups are serialised (one DNS query in flight; a dead holder's turn
+is taken over). There is no listen/accept and no UDP for programs yet.
+
 ## Testing against the host
 
 QEMU forwards 10.0.2.2 to the host's loopback, so local servers work:

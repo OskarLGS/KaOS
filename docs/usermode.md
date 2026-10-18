@@ -100,6 +100,8 @@ Register convention: `eax` = number, `ebx/ecx/edx` = args.
 | 20 | SYS_GETPID | → pid |
 | 45 | SYS_SBRK | ebx=increment → previous break (sbrk semantics in brk's slot) |
 | 162 | SYS_SLEEP | ebx=milliseconds (nanosleep's slot; 10 ms resolution) |
+| 300 | SYS_CONNECT | ebx=IPv4 (network order), ecx=port → fd (-1 unreachable, -2 refused) |
+| 301 | SYS_RESOLVE | ebx=host name, ecx=&ip → 0 / -1 |
 
 Numbers follow Linux i386 where a call exists; every error returns -1.
 Pointers are checked against the caller's page tables
@@ -113,6 +115,11 @@ and unmapped holes are refused instead of faulting in Ring 0
   RAMFS and FAT32 alike (`cp.elf readme.txt disk/docs/copia.txt`).
   Files still open when a task stops (exit, crash, kill, Ctrl+C) are
   closed for it.
+- **Sockets**: `SYS_CONNECT` opens a TCP connection and returns a file
+  descriptor in the same table as files; `SYS_READ`/`SYS_WRITE`/
+  `SYS_CLOSE` on it receive (blocking, 30 s timeout; 0 = peer closed),
+  send and close. The connection belongs to the process: if it exits,
+  crashes or is killed, the network task aborts it (RST).
 - **Heap**: the break starts at the first page after the program image
   and may grow to `USER_HEAP_LIMIT` (a guard page under the stack). Pages
   are mapped from the frame pool as the break crosses them and released
@@ -156,3 +163,4 @@ fault, and the shell survives.
 | `heap.elf` | SYS_SBRK: 64 KB heap, oversized request refused, then grows until the pool runs out |
 | `iso.elf A &` + `iso.elf B` | Two processes, same virtual address, separate memory |
 | `badptr.elf` | Syscalls refuse kernel / unmapped pointers |
+| `wget.elf host[:port]/path [file]` | HTTP client in Ring 3: SYS_RESOLVE + SYS_CONNECT, saves with the user's permissions |
