@@ -2,7 +2,7 @@
 
 From bare metal to a full operating system.
 
-> Estado a 2026-10: **Fases 1–4 completas**, Fase 5 casi completa.
+> Estado a 2026-10: **Fases 1–5 completas**; Fases 6 y 7 en progreso.
 > Documentación por subsistema en [docs/](docs/README.md); guía de
 > build/test en [AGENTS.md](AGENTS.md).
 
@@ -46,7 +46,7 @@ From bare metal to a full operating system.
 
 ---
 
-## 🟣 Fase 5: GUI y Ventanas (casi completa)
+## 🟣 Fase 5: GUI y Ventanas ✅
 ### Meta: Un escritorio usable con ventanas.
 - [x] **Modo VESA (VBE)**: 800x600x32 con framebuffer lineal.
 - [x] **Librería Gráfica**: Primitivas rápidas (`rep stosl/movsl`),
@@ -61,8 +61,8 @@ From bare metal to a full operating system.
       esquinas; la terminal recoloca su texto al soltar.
 - [x] **App: Reloj** — ventana Clock (hora grande + fecha) y hora en la
       barra de tareas, leídas del RTC.
-- [ ] **App: Visor de ficheros** — navegar el VFS con el ratón
-      (estrena `readdir` gráfico y doble clic).
+- [x] **App: Visor de ficheros** (Files) — navegar el VFS con ratón
+      (doble clic) o teclado y leer ficheros de texto con scroll.
 - [x] **Scroll-back en la terminal** (RePág/AvPág, 200 líneas) e
       historial de comandos (↑/↓) en ambos modos: el driver emite teclas
       extendidas (prefijo 0xE0) y la shell tiene un editor de línea único.

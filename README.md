@@ -89,9 +89,10 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **Filesystems** — VFS + RAMFS + FAT32 (read/write, persists across
   reboots), multi-level paths (`cat disk/docs/readme.txt`).
 - **Graphical desktop** — double-buffered window manager: dragging,
-  focus, minimize, close, taskbar with per-window buttons and a start
-  menu, live "About" and "Clock" windows, and a full **graphical
-  terminal** running the shell (with scroll-back on PgUp/PgDn).
+  resizing, focus, minimize, close, taskbar with per-window buttons, a
+  clock and a start menu; "About", "Clock" and "Files" (VFS browser)
+  windows, and a full **graphical terminal** running the shell (with
+  scroll-back on PgUp/PgDn).
 - **Shell** — command history with ↑/↓ in text mode and on the desktop.
 
 ## Shell Commands

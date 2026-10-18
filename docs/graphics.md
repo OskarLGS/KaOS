@@ -54,8 +54,28 @@ draws the client area each frame.
   and reflows the text up to the cursor, so the prompt stays where you
   were typing.
 
-The desktop loop (`run_desktop` in main.c) polls mouse/keyboard, redraws
-on any change and once per second (for live stats like the About window).
+Optional per-window callbacks: `on_paint`, `on_resize`, `on_click`
+(left click in the client area, local coordinates) and `on_key`. The
+desktop loop (`run_desktop` in main.c) polls mouse/keyboard, gives keys
+to the focused window (the terminal, or any window with `on_key`),
+redraws on any change and once per second (live stats, clocks).
+
+## Apps
+
+| Window | Source | What it does |
+|--------|--------|--------------|
+| Terminal | terminal.c | The shell (see below) |
+| About KaOS | main.c | Version, uptime, heap use |
+| Clock | main.c | RTC time (large) and date |
+| Files | files.c | VFS browser, opened from the KaOS menu (starts hidden) |
+
+**Files**: lists the current directory (directories first-class with a
+`/`, file sizes on the right) starting at `/` (RAMFS, with `disk/` for
+FAT32). Click selects, double-click (two clicks within 0.5 s) or Enter
+opens: a directory is entered, a file is shown as text (first 4 KB,
+wrapped; non-printable bytes as `.`). Backspace goes up a level or back
+from a file; ↑/↓ and PgUp/PgDn move the selection or scroll the text.
+It reloads a directory only when entering it, never per frame.
 
 ## Graphical terminal (kernel/terminal.c)
 

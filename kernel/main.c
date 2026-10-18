@@ -14,6 +14,7 @@
 #include "window.h"
 #include "terminal.h"
 #include "rtc.h"
+#include "files.h"
 
 // ─── Debug helper ─────────────────────────────────────────────────────────────
 // Port 0xE9 is logged by VirtualBox/Bochs to the host debug log (VBox.log).
@@ -78,6 +79,10 @@ static void run_desktop() {
     if (about) about->on_paint = about_paint;
     window_t* clock = wm_create(560, 40, 220, 90, "Clock");
     if (clock) clock->on_paint = clock_paint;
+    // File browser: starts hidden, opened from the KaOS start menu
+    window_t* files = wm_create(120, 110, 340, 300, "Files");
+    files_init(files);
+    if (files) wm_hide(files);
     dbg('W'); // windows created
 
     static uint8_t prev_buttons = 0;
@@ -89,10 +94,17 @@ static void run_desktop() {
         // A running foreground program owns the keyboard (SYS_READ).
         shell_poll();
         int typed = terminal_take_dirty();
-        if (wm_get_focused() == terminal_window() && get_foreground() == 0) {
+        window_t* fw = wm_get_focused();
+        if (fw == terminal_window() && get_foreground() == 0) {
             char c;
             while ((c = keyboard_get_char()) != 0) {
                 terminal_handle_key(c);
+                typed = 1;
+            }
+        } else if (fw && fw != terminal_window() && fw->on_key) {
+            char c;
+            while ((c = keyboard_get_char()) != 0) {
+                fw->on_key(fw, c);
                 typed = 1;
             }
         }
