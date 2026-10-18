@@ -20,5 +20,13 @@ int main(void) {
     // Asking for more than the region holds must fail cleanly
     if (sys_sbrk(16 * 1024 * 1024) == (void*)-1)
         sys_write("Oversized sbrk correctly refused.\n", 34);
+
+    // Grow 1 MB at a time until the kernel runs out of frames (or the
+    // region ends): each step really maps pages, and failure is clean.
+    int mb = 0;
+    while (sys_sbrk(1024 * 1024) != (void*)-1) mb++;
+    char msg[] = "Then grew the heap by ? MB more before sbrk said no.\n";
+    msg[22] = '0' + (mb % 10);
+    sys_write(msg, sizeof(msg) - 1);
     return 0;
 }

@@ -23,9 +23,6 @@
 #define O_ACCMODE 0x003
 #define O_CREAT   0x040
 
-// The user heap may grow up to this far below the stack top
-#define USER_STACK_RESERVE 0x10000  // 64 KB
-
 void syscall_handler(struct registers *r);
 
 #endif

@@ -4,16 +4,21 @@ How KaOS runs unprivileged programs that cannot touch the kernel.
 
 ## Memory layout
 
+Every program has its own address space (see memory.md):
+
 ```
-0x000000 - 0x9FFFFF   Kernel, heap, stacks   (supervisor pages)
-0xA00000 - 0xFFFFFF   User region            (pages with the U bit)
-                      programs linked at 0xA00000 (user/user.ld)
-                      user stack top at 0xF80000
+0x00000000 - 0x00FFFFFF   Kernel, heap, frame pool   (supervisor, shared)
+0x40000000 - 0x407FFFFF   This process only          (User bit)
+                          programs linked at 0x40000000 (user/user.ld)
+                          heap (sbrk) from the page after the image
+                          64 KB stack below 0x40800000
 ```
 
-Defined in `kernel/paging.h` (`USER_BASE`, `USER_END`, `USER_STACK_TOP`).
-The protection is the paging U bit: kernel pages don't have it, so any
-access from Ring 3 raises a page fault.
+Defined in `kernel/paging.h` (`USER_BASE`, `USER_END`, `USER_STACK_TOP`,
+`USER_STACK_SIZE`, `USER_HEAP_LIMIT`). Kernel pages lack the User bit,
+so any access from Ring 3 page-faults; other processes' pages are simply
+not mapped. Several programs run at once, all linked at the same
+address (`iso.elf` demonstrates it).
 
 ## GDT + TSS (kernel/gdt.c, usermode.asm)
 
@@ -34,14 +39,16 @@ an interrupt or syscall arrives while running in Ring 3.
 
 `exec disk/app.elf hola mundo` →
 
-1. `cmd_exec` splits the line into words (`argv[0]` = the path).
-   `elf_load` (kernel/elf.c) refuses to run while another user program
-   is alive (they all link at 0xA00000), copies each PT_LOAD segment to
-   its real `p_vaddr` (validated inside the user region), zeroes the
-   BSS and lays out `argc`/`argv` at the top of the user stack.
-2. `create_user_task` creates a normal kernel task whose entry is
-   `user_bootstrap`: it points `tss.esp0` at this task's kernel stack
-   and calls `enter_user_mode(entry, user_esp)`.
+1. `cmd_exec` splits the line into words (`argv[0]` = the path; a final
+   `&` means background). `elf_load` (kernel/elf.c) creates an address
+   space, maps and fills each PT_LOAD segment (validated inside the user
+   region; fresh frames make the BSS zero), maps the 64 KB stack and
+   writes `argc`/`argv` at its top — all through `vmm_write`.
+2. `create_user_task` (atomically, interrupts off) creates a kernel task
+   owning the page directory, whose entry is `user_bootstrap`: it points
+   `tss.esp0` at this task's kernel stack and calls
+   `enter_user_mode(entry, user_esp)`. The scheduler has already loaded
+   its directory into CR3.
 3. `enter_user_mode` (usermode.asm) loads the user data selectors,
    builds an `iret` frame (`SS=0x23, ESP, EFLAGS|IF, CS=0x1B, EIP`)
    and drops privilege. There is no way back except interrupts.
@@ -71,7 +78,12 @@ esp ->          argc
 `exec` makes the program the foreground job: it owns the keyboard and
 the shell withholds its prompt. `shell_poll()`, called from the input
 loop, notices when the job stopped, prints the report and the prompt.
-`ps` shows stopped tasks as EXITED / CRASHED / KILLED.
+`exec prog &` starts a background job instead: no keyboard (its
+SYS_READ waits), and `[pid N done] [exited with code X]` is printed at
+the next prompt. Jobs are **zombies** until reported
+(`task_keep_status`): their slot is not recycled before the shell has
+collected the status. `ps` shows stopped tasks as EXITED / CRASHED /
+KILLED and each program's memory.
 
 ## System calls
 
@@ -90,8 +102,11 @@ Register convention: `eax` = number, `ebx/ecx/edx` = args.
 | 162 | SYS_SLEEP | ebx=milliseconds (nanosleep's slot; 10 ms resolution) |
 
 Numbers follow Linux i386 where a call exists; every error returns -1.
-Pointers are checked to lie in the user region (`user_range_ok`, and
-byte by byte for path strings) before the kernel touches them.
+Pointers are checked against the caller's page tables
+(`vmm_user_range_ok`: every page mapped with the User bit; byte by byte
+for path strings) before the kernel touches them, so kernel addresses
+and unmapped holes are refused instead of faulting in Ring 0
+(`badptr.elf`).
 
 - **Files**: each task has `files[MAX_FDS]` (8; 0-2 are the console and
   never allocated). Paths go through `vfs_resolve`, so they work on
@@ -99,7 +114,9 @@ byte by byte for path strings) before the kernel touches them.
   Files still open when a task stops (exit, crash, kill, Ctrl+C) are
   closed for it.
 - **Heap**: the break starts at the first page after the program image
-  and may grow to 64 KB below the stack top. New memory is zeroed.
+  and may grow to `USER_HEAP_LIMIT` (a guard page under the stack). Pages
+  are mapped from the frame pool as the break crosses them and released
+  when it shrinks; when the pool is empty sbrk returns -1.
 - **Sleep**: sets `wake_tick`; `schedule()` skips the task until then,
   so a sleeping program costs no CPU.
 
@@ -120,9 +137,8 @@ fault, and the shell survives.
 
 ## Limitations (by design, for now)
 
-- One user program at a time (fixed load address 0xA00000).
-- No per-process address spaces (all user tasks share the
-  identity-mapped user region).
+- Up to 7 programs at once (`MAX_TASKS` 8, slot 0 is the shell), within
+  the 6 MB frame pool. No demand paging, swapping or copy-on-write.
 
 ## Demo programs (user/)
 
@@ -137,4 +153,6 @@ fault, and the shell survives.
 | `cat.elf path` | SYS_OPEN / SYS_READ |
 | `cp.elf from to` | Copy across RAMFS and FAT32 (O_CREAT, SYS_WRITE to a file) |
 | `sleep.elf 3` | SYS_SLEEP + SYS_GETPID countdown |
-| `heap.elf` | SYS_SBRK: 64 KB heap, oversized request refused |
+| `heap.elf` | SYS_SBRK: 64 KB heap, oversized request refused, then grows until the pool runs out |
+| `iso.elf A &` + `iso.elf B` | Two processes, same virtual address, separate memory |
+| `badptr.elf` | Syscalls refuse kernel / unmapped pointers |

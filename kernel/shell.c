@@ -15,6 +15,7 @@
 static command_t commands[MAX_COMMANDS];
 static int num_commands = 0;
 static int job_pid = 0; // Foreground program the shell waits on (0 = none)
+static int bg_pids[MAX_TASKS]; // Background programs not yet reported
 
 static char line[SHELL_LINE_MAX];   // Line being edited
 
@@ -27,6 +28,8 @@ static int  history_pos = 0;
 static char draft[SHELL_LINE_MAX];
 
 static void (*clear_hook)() = 0;
+
+static void print_prompt();
 
 void register_command(const char* name, const char* description, command_func func) {
     if (num_commands >= MAX_COMMANDS) return;
@@ -69,7 +72,7 @@ void init_shell() {
 
 void shell_handler(char* input) {
     if (strlen(input) == 0) {
-        print_string("> ");
+        print_prompt();
         return;
     }
 
@@ -107,7 +110,7 @@ void shell_handler(char* input) {
         print_string("'\nType 'help' for a list of commands.\n");
     }
 
-    if (!job_pid) print_string("> ");
+    if (!job_pid) print_prompt();
 }
 
 void shell_set_clear_hook(void (*hook)()) {
@@ -188,10 +191,67 @@ void shell_input_key(char c) {
 }
 
 void shell_start_job(int pid) {
+    task_keep_status(pid);
     job_pid = pid;
 }
 
+void shell_start_background(int pid) {
+    task_keep_status(pid);
+    for (int i = 0; i < MAX_TASKS; i++) {
+        if (!bg_pids[i]) { bg_pids[i] = pid; return; }
+    }
+}
+
+// "[exited with code 0]" etc. for a task that ended, into `out`.
+static void describe_exit(int st, int code, exit_kind_t kind, char* out) {
+    if (st < 0) {
+        strcpy(out, "[program ended]");
+    } else if (kind == EXIT_NORMAL) {
+        strcpy(out, "[exited with code ");
+        int_to_ascii(code, out + strlen(out));
+        append(out, ']');
+    } else if (kind == EXIT_FAULT) {
+        strcpy(out, "[crashed: ");
+        strcpy(out + strlen(out), exception_messages[code & 31]);
+        append(out, ']');
+    } else if (kind == EXIT_INTERRUPTED) {
+        strcpy(out, "^C [interrupted]");
+    } else {
+        strcpy(out, "[killed]");
+    }
+}
+
+// Report background jobs that finished since the last prompt (like a Unix
+// shell, only when a prompt is printed — never in the middle of a line).
+static void report_background() {
+    for (int i = 0; i < MAX_TASKS; i++) {
+        if (!bg_pids[i]) continue;
+        int code;
+        exit_kind_t kind;
+        int st = task_status(bg_pids[i], &code, &kind);
+        if (st == 0) continue;
+
+        char line[80];
+        strcpy(line, "[pid ");
+        int_to_ascii(bg_pids[i], line + strlen(line));
+        strcpy(line + strlen(line), " done] ");
+        describe_exit(st, code, kind, line + strlen(line));
+        append(line, '\n');
+        print_string(line);
+        bg_pids[i] = 0;
+    }
+}
+
+static void print_prompt() {
+    report_background();
+    print_string("> ");
+}
+
 void shell_poll() {
+    // Free the address spaces of programs that have stopped (safe here:
+    // we are the shell task, so none of them is running).
+    task_reap();
+
     if (!job_pid) return;
 
     int code;
@@ -201,24 +261,9 @@ void shell_poll() {
 
     // Compose the whole report first: one print_string is atomic.
     char line[80];
-    line[0] = '\0';
-    if (st < 0) {
-        strcpy(line, "[program ended]");
-    } else if (kind == EXIT_NORMAL) {
-        strcpy(line, "[exited with code ");
-        int_to_ascii(code, line + strlen(line));
-        append(line, ']');
-    } else if (kind == EXIT_FAULT) {
-        strcpy(line, "[crashed: ");
-        strcpy(line + strlen(line), exception_messages[code & 31]);
-        append(line, ']');
-    } else if (kind == EXIT_INTERRUPTED) {
-        strcpy(line, "^C [interrupted]");
-    } else {
-        strcpy(line, "[killed]");
-    }
-    strcpy(line + strlen(line), "\n> ");
+    describe_exit(st, code, kind, line);
+    append(line, '\n');
     job_pid = 0;
     print_string(line);
+    print_prompt();
 }
-

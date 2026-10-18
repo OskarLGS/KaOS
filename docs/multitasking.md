@@ -1,6 +1,6 @@
 # Multitasking
 
-KaOS supports cooperative multitasking — multiple tasks run concurrently by sharing the CPU through the PIT timer.
+KaOS supports preemptive multitasking — the PIT timer (IRQ0) calls `schedule()`, and tasks may also `yield()`. On every switch the scheduler loads the next task's page directory (user programs have their own; kernel tasks use the kernel's), see memory.md.
 
 ## How it works
 

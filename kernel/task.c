@@ -52,7 +52,7 @@ int create_task(const char* name, void (*entry)()) {
     // grow the table if none can be recycled. Never touch slot 0 (shell).
     int idx = -1;
     for (int i = 1; i < task_count; i++) {
-        if (tasks[i].state == TASK_STOPPED) { idx = i; break; }
+        if (tasks[i].state == TASK_STOPPED && !tasks[i].keep_status) { idx = i; break; }
     }
     if (idx < 0) {
         if (task_count >= MAX_TASKS) {
@@ -63,6 +63,11 @@ int create_task(const char* name, void (*entry)()) {
     }
     task_t* t = &tasks[idx];
 
+    // A recycled slot may still hold a dead program's address space. It
+    // stopped before we (the running creator) were scheduled, so it is
+    // safe to free.
+    if (t->page_dir) vmm_destroy(t->page_dir);
+
     copy_name(t->name, name);
     t->id = next_pid++;
     t->state = TASK_READY;
@@ -70,8 +75,11 @@ int create_task(const char* name, void (*entry)()) {
     t->user_esp = 0;
     t->exit_code = 0;
     t->exit_kind = EXIT_NORMAL;
+    t->keep_status = 0;
     t->wake_tick = 0;
     t->user_brk = 0;
+    t->heap_base = 0;
+    t->page_dir = 0;
     memory_set((uint8_t*)t->files, 0, sizeof(t->files));
 
     uint32_t* stack_top = (uint32_t*)(t->stack + TASK_STACK_SIZE);
@@ -100,18 +108,26 @@ static void user_bootstrap() {
 }
 
 int create_user_task(const char* name, uint32_t entry, uint32_t user_esp,
-                     uint32_t user_brk) {
-    int pid = create_task(name, user_bootstrap);
-    if (pid < 0) return pid;
+                     uint32_t user_brk, uint32_t* page_dir) {
+    // Keep interrupts off until the task is fully described: create_task
+    // makes it READY, and if the timer ran it before user_entry/page_dir
+    // were set, user_bootstrap would jump to address 0.
+    uint32_t eflags;
+    __asm__ __volatile__("pushf; pop %0; cli" : "=r"(eflags));
 
-    for (int i = 0; i < task_count; i++) {
-        if (tasks[i].id == pid) {
+    int pid = create_task(name, user_bootstrap);
+    for (int i = 0; pid >= 0 && i < task_count; i++) {
+        if ((int)tasks[i].id == pid) {
             tasks[i].user_entry = entry;
             tasks[i].user_esp = user_esp;
             tasks[i].user_brk = user_brk;
+            tasks[i].heap_base = user_brk;
+            tasks[i].page_dir = page_dir;
             break;
         }
     }
+
+    if (eflags & 0x200) __asm__ __volatile__("sti");
     return pid;
 }
 
@@ -149,6 +165,10 @@ void schedule() {
         // task runs in Ring 3. Ring 0 tasks ignore it, so always setting it
         // is safe.
         tss_set_kernel_stack((uint32_t)(tasks[next].stack + TASK_STACK_SIZE));
+
+        // Its address space. Kernel stacks and code are mapped identically
+        // in every directory, so we keep running fine across the reload.
+        vmm_switch(tasks[next].page_dir);
 
         switch_context(&tasks[prev].esp, tasks[next].esp);
     }
@@ -204,15 +224,28 @@ int task_status(int pid, int* code, exit_kind_t* kind) {
         if (tasks[i].state != TASK_STOPPED) return 0;
         *code = tasks[i].exit_code;
         *kind = tasks[i].exit_kind;
+        tasks[i].keep_status = 0;   // Collected: the slot may be reused
         return 1;
     }
     return -1;
 }
 
-int user_task_running() {
+void task_keep_status(int pid) {
     for (int i = 1; i < task_count; i++)
-        if (tasks[i].user_entry && tasks[i].state != TASK_STOPPED) return 1;
-    return 0;
+        if ((int)tasks[i].id == pid) tasks[i].keep_status = 1;
+}
+
+void task_reap() {
+    uint32_t eflags;
+    __asm__ __volatile__("pushf; pop %0; cli" : "=r"(eflags));
+    for (int i = 1; i < task_count; i++) {
+        if (i == current_task) continue;
+        if (tasks[i].state == TASK_STOPPED && tasks[i].page_dir) {
+            vmm_destroy(tasks[i].page_dir);
+            tasks[i].page_dir = 0;
+        }
+    }
+    if (eflags & 0x200) __asm__ __volatile__("sti");
 }
 
 void kexit() {

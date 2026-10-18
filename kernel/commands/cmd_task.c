@@ -4,6 +4,7 @@
 #include "../elf.h"
 #include "../util.h"
 #include "../screen.h"
+#include "../paging.h"
 
 // Demo of preemptive multitasking: a CPU-bound task that NEVER yields.
 // volatile so the spin loop's increments are real memory writes the shell
@@ -38,8 +39,8 @@ static void cmd_spin(char* args) {
 
 static void cmd_ps(char* args) {
     (void)args;
-    print_string("PID  STATE    NAME\n");
-    print_string("---  ------   ----\n");
+    print_string("PID  STATE    MEM    NAME\n");
+    print_string("---  ------   -----  ----\n");
     for (int i = 0; i < get_task_count(); i++) {
         task_t* t = get_task(i);
         if (t) {
@@ -52,6 +53,15 @@ static void cmd_ps(char* args) {
             else if (t->exit_kind == EXIT_NORMAL) print_string("EXITED   ");
             else if (t->exit_kind == EXIT_FAULT) print_string("CRASHED  ");
             else print_string("KILLED   ");
+
+            // Memory of its own address space (user programs only)
+            char mem[16] = "-      ";
+            if (t->page_dir) {
+                int_to_ascii((int)vmm_user_pages(t->page_dir) * 4, mem);
+                strcpy(mem + strlen(mem), "K");
+                while (strlen(mem) < 7) append(mem, ' ');
+            }
+            print_string(mem);
             print_string(t->name);
             print_string("\n");
         }
@@ -83,8 +93,15 @@ static int split_args(char* args, char** argv, int max) {
 static void cmd_exec(char* args) {
     char* argv[ELF_MAX_ARGS];
     int argc = split_args(args, argv, ELF_MAX_ARGS);
+
+    // A trailing "&" runs the program in the background
+    int background = 0;
+    if (argc > 0 && strcmp(argv[argc - 1], "&") == 0) {
+        background = 1;
+        argc--;
+    }
     if (argc == 0) {
-        print_string("Usage: exec <path> [args...]\n");
+        print_string("Usage: exec <path> [args...] [&]\n");
         return;
     }
     fs_node_t *file = vfs_resolve(argv[0]);
@@ -106,11 +123,16 @@ static void cmd_exec(char* args) {
             int_to_ascii(pid, line + strlen(line));
             append(line, '\n');
             print_string(line);
-            // Hand the keyboard to the program so its SYS_READ works; the
-            // shell resumes input when the program exits (kexit clears it)
-            // and reports its exit status from shell_poll().
-            set_foreground(pid);
-            shell_start_job(pid);
+            if (background) {
+                // Runs alongside the shell; reported at a later prompt
+                shell_start_background(pid);
+            } else {
+                // Hand the keyboard to the program so its SYS_READ works;
+                // the shell resumes input when the program exits (kexit
+                // clears it) and reports its exit status from shell_poll().
+                set_foreground(pid);
+                shell_start_job(pid);
+            }
         } else {
             print_string("Failed to load ELF.\n");
         }
@@ -133,7 +155,7 @@ static void cmd_uptime(char* args) {
 void init_cmd_task() {
     register_command("ps", "List running tasks", cmd_ps);
     register_command("kill", "Stop a task by PID", cmd_kill);
-    register_command("exec", "Run an ELF program (exec disk/a.elf args)", cmd_exec);
+    register_command("exec", "Run a program (exec disk/a.elf args [&])", cmd_exec);
     register_command("uptime", "Show system uptime", cmd_uptime);
     register_command("spin", "Demo: start a CPU-bound task (preemption)", cmd_spin);
 }

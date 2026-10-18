@@ -95,7 +95,8 @@ FAT32 writes can be verified from the host without booting:
 | Value | Defined in | Must match |
 |-------|-----------|------------|
 | Kernel slot = 256 sectors at LBA 2 | `build.sh` | loop count in `kernel/kernel.asm`, recovery LBA 258 in `boot/boot.asm` |
-| User region 10–16MB (`USER_BASE`) | `kernel/paging.h` | link address in `user/user.ld`, checks in `kernel/elf.c` |
+| User virtual base 0x40000000 (`USER_BASE`) | `kernel/paging.h` | link address in `user/user.ld` |
+| Frame pool 10–16 MB, heap 1–9 MB | `kernel/paging.h`, `kernel/memory.h` | must not overlap; both inside the 16 MB identity map |
 | Kernel selectors 0x08/0x10 | `kernel/gdt.c` | `kernel/kernel.asm` GDT, all interrupt stubs, `entry.asm` |
 | VBE info block at 0x0900 | `kernel/kernel.asm` | `vbe_info_t` read in `kernel/graphics.c` |
 | Terminal window 500x350 | `kernel/main.c` | `TERM_COLS/ROWS` in `kernel/terminal.c` |
@@ -150,6 +151,8 @@ FAT32 writes can be verified from the host without booting:
    `exec disk/crash.elf` reports `[crashed: Page Fault]` without taking
    the system down, `exec disk/cp.elf readme.txt disk/docs/c.txt` +
    `cat disk/docs/c.txt`, `exec disk/sleep.elf 2`, `exec disk/heap.elf`,
-   `exec disk/loop.elf` stops on Ctrl+C (`sendkey
+   `exec disk/iso.elf A &` + `exec disk/iso.elf B` (both "ok", each
+   reported), `exec disk/badptr.elf` (all refused), `paging` back to
+   0 KB in use once everything ended, `exec disk/loop.elf` stops on Ctrl+C (`sendkey
    ctrl-c`), and `uptime` still answers afterwards. Check the desktop
    terminal too (click it first: the About window starts focused).

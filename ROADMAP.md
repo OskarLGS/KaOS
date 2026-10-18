@@ -2,7 +2,7 @@
 
 From bare metal to a full operating system.
 
-> Estado a 2026-10: **Fases 1–5 completas**; Fases 6 y 7 en progreso.
+> Estado a 2026-10: **Fases 1–6 completas**; Fase 7 en progreso.
 > Documentación por subsistema en [docs/](docs/README.md); guía de
 > build/test en [AGENTS.md](AGENTS.md).
 
@@ -69,7 +69,7 @@ From bare metal to a full operating system.
 
 ---
 
-## 🔵 Fase 6: Procesos de Verdad (en progreso)
+## 🔵 Fase 6: Procesos de Verdad ✅
 ### Meta: De "cargar un ELF" a un modelo de procesos digno.
 - [x] **Multitarea preemptiva**: el timer (IRQ0) conduce `schedule()`;
       una tarea que no cede CPU ya no congela el sistema (demo: `spin`).
@@ -87,10 +87,12 @@ From bare metal to a full operating system.
       shell espera al programa en primer plano e informa
       (`[exited with code 42]`, `[crashed: Page Fault]`, `^C`).
       **Ctrl+C** interrumpe el programa en primer plano.
-- [ ] **Varios programas de usuario a la vez**: Asignación dinámica de
-      la región de usuario (hoy: un programa fijo en 0xA00000).
-- [ ] **Espacios de direcciones por proceso**: Un page directory por
-      tarea — el gran salto de aislamiento real.
+- [x] **Espacios de direcciones por proceso**: un page directory por
+      programa (CR3 en cada cambio de tarea), pool de marcos de 4 KB,
+      punteros de las syscalls validados contra las tablas de páginas.
+- [x] **Varios programas de usuario a la vez**: todos enlazados en
+      0x40000000 con memoria propia; `exec prog &` en segundo plano,
+      procesos zombi hasta que la shell recoge su estado.
 
 ---
 

@@ -106,7 +106,8 @@ for ufile in user/*.c; do
   [ -f "$ufile" ] || continue
   uname=$(basename "${ufile%.c}")
   gcc $CFLAGS -c "$ufile" -o "$BUILD_DIR/user_$uname.o"
-  ld -m elf_i386 -T user/user.ld "$BUILD_DIR/user_crt0.o" "$BUILD_DIR/user_$uname.o" -o "$BUILD_DIR/$uname.elf"
+  # One RWX segment is expected: user.ld has no separate PHDRS for data
+  ld -m elf_i386 --no-warn-rwx-segments -T user/user.ld "$BUILD_DIR/user_crt0.o" "$BUILD_DIR/user_$uname.o" -o "$BUILD_DIR/$uname.elf"
 done
 
 if command -v mkfs.fat >/dev/null && command -v mcopy >/dev/null; then

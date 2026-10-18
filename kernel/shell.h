@@ -21,6 +21,9 @@ void shell_handler(char* input);
 // Foreground job: the shell withholds its prompt while `pid` runs, and
 // shell_poll() (called from the input loop) reports how it ended.
 void shell_start_job(int pid);
+// A program started with `exec ... &`: it runs alongside the shell (no
+// keyboard) and its end is reported at the next prompt.
+void shell_start_background(int pid);
 void shell_poll();
 
 // Line editor shared by the text console and the graphical terminal:

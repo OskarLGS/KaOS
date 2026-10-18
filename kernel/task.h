@@ -40,25 +40,37 @@ typedef struct {
     uint32_t user_esp;   // Initial Ring 3 stack pointer (argc/argv laid out)
     int exit_code;       // Valid once state == TASK_STOPPED
     exit_kind_t exit_kind;
+    int keep_status;     // Zombie: once stopped, keep the slot until
+                         // task_status() has handed the exit status over
     uint32_t wake_tick;  // Not scheduled before this timer tick (sleep)
     uint32_t user_brk;   // End of the Ring 3 heap (sbrk); 0 = kernel task
+    uint32_t heap_base;  // Initial break: the heap never shrinks below it
+    uint32_t* page_dir;  // Own address space (user tasks); 0 = kernel's
     file_t files[MAX_FDS];
     uint8_t stack[TASK_STACK_SIZE]; // Kernel stack (also syscall stack via TSS)
 } task_t;
 
 void tasking_init();
 int create_task(const char* name, void (*entry)());
+// Takes ownership of `page_dir` (freed by task_reap once the task stops).
 int create_user_task(const char* name, uint32_t entry, uint32_t user_esp,
-                     uint32_t user_brk);
+                     uint32_t user_brk, uint32_t* page_dir);
+// Free the address spaces of stopped tasks. Call from the shell task
+// (never from an IRQ): a stopped task may still be running on its own
+// page directory until the next switch, which can't happen while the
+// shell itself is running.
+void task_reap();
 task_t* current_task_ptr();
 // Block the current task for at least `ticks` timer ticks.
 void task_sleep(uint32_t ticks);
 
 // Exit status of `pid`: returns 1 and fills code/kind once it has stopped,
 // 0 while it still runs, -1 if no such task exists (slot recycled).
+// Returning 1 collects a zombie (see task_keep_status), freeing its slot.
 int task_status(int pid, int* code, exit_kind_t* kind);
-// 1 while any Ring 3 program is alive (they all share the user region).
-int user_task_running();
+// Someone will ask for `pid`'s exit status: don't recycle its slot after
+// it stops until task_status() has reported it.
+void task_keep_status(int pid);
 
 // Foreground task = keyboard owner (0 = shell). While a foreground program
 // runs, the shell stops consuming keys so the program's SYS_READ gets them.

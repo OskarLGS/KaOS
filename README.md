@@ -74,7 +74,8 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **KaBooM Boot Menu** — arrow keys + Enter, chainloading from a real
   partition table.
 - **32-bit Protected Mode** — GDT with kernel/user segments + TSS.
-- **Paging** — kernel pages supervisor-only, dedicated user region.
+- **Paging** — one address space per process (own page directory),
+  frame allocator, kernel pages supervisor-only.
 - **Interrupts (IDT)** — exceptions, PIC remap, hardware IRQs, syscalls.
 - **Drivers** — VGA text, VBE graphics, PS/2 keyboard (with Shift),
   PS/2 mouse, PIT timer, CMOS real-time clock, ATA PIO disk (read
@@ -85,7 +86,8 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **System calls** — `int 0x80`: `exit`, `read`, `write`, `open`, `close`,
   `getpid`, `sbrk`, `sleep` (file descriptors over the VFS).
 - **Programs** — `main(argc, argv)` with arguments from the shell, exit
-  codes reported by the shell, Ctrl+C stops the foreground program.
+  codes reported by the shell, Ctrl+C stops the foreground program,
+  several programs at once (`exec disk/sleep.elf 5 &`).
 - **Filesystems** — VFS + RAMFS + FAT32 (read/write, persists across
   reboots), multi-level paths (`cat disk/docs/readme.txt`).
 - **Graphical desktop** — double-buffered window manager: dragging,
