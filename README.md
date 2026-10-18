@@ -65,7 +65,9 @@ qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
 ```
 The two `-netdev`/`-device` options give KaOS an RTL8139 network card on
 QEMU's user-mode network (10.0.2.0/24, gateway 10.0.2.2). Without them
-KaOS still boots; networking is just unavailable.
+KaOS still boots; networking is just unavailable. Add
+`,hostfwd=tcp::8080-:80` to `-netdev` and run `exec disk/httpd.elf &` in
+KaOS to browse `http://localhost:8080/` from the host.
 On Windows, use native QEMU (`winget install SoftwareFreedomConservancy.QEMU`)
 rather than QEMU inside WSLg — mouse capture only works natively.
 Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
@@ -104,7 +106,8 @@ See [docs/users.md](docs/users.md).
   PS/2 mouse, PIT timer, CMOS real-time clock, ATA PIO disk (read
   **and write**), PCI, RTL8139 network card.
 - **Networking** — ARP, IPv4, ICMP, UDP, TCP; DHCP at boot, DNS;
-  `ping`, `host`, `fetch` (HTTP).
+  `ping`, `host`, `fetch` (HTTP); programs get TCP sockets (client and
+  server: `wget.elf`, `httpd.elf`).
 - **Multitasking** — preemptive scheduler (timer-driven) with `ps`, `kill`.
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.

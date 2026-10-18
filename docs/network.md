@@ -40,7 +40,7 @@ ARP reply resolves it first, unlocked, and then sends under the lock.
 | UDP | Port bindings with handlers (run in the net task), pseudo-header checksum |
 | DHCP | DISCOVER → OFFER → REQUEST → ACK at boot (4 tries), broadcast flag; sets ip/mask/gateway/dns. Falls back to QEMU's addresses. No lease renewal |
 | DNS | A-record queries to the configured server; skips CNAMEs, follows compressed names |
-| TCP | Client side: active open with MSS option, in-order receive into an 8 KB ring (out-of-order dropped, duplicate ACK), window updates, send buffer within the peer window, go-back-N retransmission (500 ms RTO with backoff, 8 tries), FIN both ways, RST for unknown connections. 4 connections. A connection whose task dies is aborted with RST |
+| TCP | Active open, and passive open (listen/accept, 4-deep backlog, SYN+ACK retransmitted), MSS option, in-order receive into an 8 KB ring (out-of-order dropped, duplicate ACK), window updates, send buffer within the peer window, go-back-N retransmission (500 ms RTO with backoff, 8 tries), FIN both ways, RST for unknown connections. 8 connections, 2 listeners. A connection whose task dies is aborted with RST |
 
 ## Commands
 
@@ -63,7 +63,26 @@ User programs reach TCP through two syscalls (see usermode.md):
 `SYS_RESOLVE` (DNS) and `SYS_CONNECT`, which returns a file descriptor
 used with the ordinary read/write/close. `user/wget.c` is the example.
 Lookups are serialised (one DNS query in flight; a dead holder's turn
-is taken over). There is no listen/accept and no UDP for programs yet.
+is taken over). Servers use `SYS_LISTEN` (ports below 1024: root
+only) and `SYS_ACCEPT`; `user/httpd.c` is a small web server. A
+listener whose process dies is dropped by the net task with its pending
+connections. There is no UDP for programs yet.
+
+### Serving to the host
+
+QEMU's `hostfwd` forwards a host port into KaOS:
+
+```bash
+qemu-system-i386 ... -netdev user,id=n0,hostfwd=tcp::8080-:80 -device rtl8139,netdev=n0
+```
+
+```
+root# mkdir disk/www
+root# echo Hola desde KaOS > disk/www/index.html
+root# exec disk/httpd.elf &
+```
+
+Then open `http://localhost:8080/` on the host.
 
 ## Testing against the host
 

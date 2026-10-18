@@ -102,6 +102,8 @@ Register convention: `eax` = number, `ebx/ecx/edx` = args.
 | 162 | SYS_SLEEP | ebx=milliseconds (nanosleep's slot; 10 ms resolution) |
 | 300 | SYS_CONNECT | ebx=IPv4 (network order), ecx=port → fd (-1 unreachable, -2 refused) |
 | 301 | SYS_RESOLVE | ebx=host name, ecx=&ip → 0 / -1 |
+| 302 | SYS_LISTEN | ebx=port → listening fd (-1; -2 port in use); < 1024 root only |
+| 303 | SYS_ACCEPT | ebx=listening fd → connection fd (blocks) |
 
 Numbers follow Linux i386 where a call exists; every error returns -1.
 Pointers are checked against the caller's page tables
@@ -163,4 +165,5 @@ fault, and the shell survives.
 | `heap.elf` | SYS_SBRK: 64 KB heap, oversized request refused, then grows until the pool runs out |
 | `iso.elf A &` + `iso.elf B` | Two processes, same virtual address, separate memory |
 | `badptr.elf` | Syscalls refuse kernel / unmapped pointers |
+| `httpd.elf [port] [root]` | Web server (default port 80, disk/www): SYS_LISTEN/SYS_ACCEPT |
 | `wget.elf host[:port]/path [file]` | HTTP client in Ring 3: SYS_RESOLVE + SYS_CONNECT, saves with the user's permissions |

@@ -134,6 +134,8 @@ From bare metal to a full operating system.
       verificado con una descarga de 63 KB idéntica byte a byte.
 - [x] **Sockets para programas**: `SYS_CONNECT`/`SYS_RESOLVE`; el socket
       es un descriptor más (read/write/close). Demo: `wget.elf` en Ring 3.
+- [x] **Servidor TCP**: `listen`/`accept` para programas; `httpd.elf`
+      sirve `disk/www` y se ve desde el navegador del host (hostfwd).
 - [x] **Kernel más grande**: el hueco del kernel es un único parámetro
       (`KERNEL_SECTORS` en build.sh), ahora 256 KB.
 - [ ] **Self-hosting**: Compilarse a sí mismo (necesita un compilador C
