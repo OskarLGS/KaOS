@@ -16,6 +16,8 @@ static command_t commands[MAX_COMMANDS];
 static int num_commands = 0;
 static int job_pid = 0; // Foreground program the shell waits on (0 = none)
 static int bg_pids[MAX_TASKS]; // Background programs not yet reported
+static int job_quiet = 0;      // Foreground job is a builtin: no "[exited 0]"
+static char job_args[SHELL_LINE_MAX];
 
 static char line[SHELL_LINE_MAX];   // Line being edited
 
@@ -68,6 +70,7 @@ void init_shell() {
     init_cmd_fs();
     init_cmd_mem();
     init_cmd_task();
+    init_cmd_net();
 }
 
 void shell_handler(char* input) {
@@ -193,6 +196,22 @@ void shell_input_key(char c) {
 void shell_start_job(int pid) {
     task_keep_status(pid);
     job_pid = pid;
+    job_quiet = 0;
+}
+
+int shell_run_job(const char* name, void (*fn)(), const char* args) {
+    if (job_pid) return -1;                  // One foreground job at a time
+    strcpy(job_args, (char*)args);
+    int pid = create_task(name, fn);
+    if (pid < 0) return -1;
+    set_foreground(pid);                     // Ctrl+C targets it
+    shell_start_job(pid);
+    job_quiet = 1;
+    return pid;
+}
+
+char* shell_job_args() {
+    return job_args;
 }
 
 void shell_start_background(int pid) {
@@ -260,10 +279,12 @@ void shell_poll() {
     if (st == 0) return; // Still running
 
     // Compose the whole report first: one print_string is atomic.
-    char line[80];
-    describe_exit(st, code, kind, line);
-    append(line, '\n');
     job_pid = 0;
-    print_string(line);
+    if (!(job_quiet && st > 0 && kind == EXIT_NORMAL && code == 0)) {
+        char line[80];
+        describe_exit(st, code, kind, line);
+        append(line, '\n');
+        print_string(line);
+    }
     print_prompt();
 }

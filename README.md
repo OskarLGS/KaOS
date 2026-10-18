@@ -49,8 +49,12 @@ hard disk with the user programs — your files on it persist).
 ```bash
 # The floppy attachment matters: the loader uses floppy CHS geometry
 qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
-                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a
+                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a \
+                 -netdev user,id=n0 -device rtl8139,netdev=n0
 ```
+The two `-netdev`/`-device` options give KaOS an RTL8139 network card on
+QEMU's user-mode network (10.0.2.0/24, gateway 10.0.2.2). Without them
+KaOS still boots; networking is just unavailable.
 On Windows, use native QEMU (`winget install SoftwareFreedomConservancy.QEMU`)
 rather than QEMU inside WSLg — mouse capture only works natively.
 Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.

@@ -37,13 +37,14 @@ floppy boot first.
 
 Windows (native QEMU, installed at `C:\Program Files\qemu`):
 ```powershell
-& "C:\Program Files\qemu\qemu-system-i386.exe" -drive format=raw,file=kaos.img,if=floppy -drive format=raw,file=build\fat32.img,if=ide -boot order=a
+& "C:\Program Files\qemu\qemu-system-i386.exe" -drive format=raw,file=kaos.img,if=floppy -drive format=raw,file=build\fat32.img,if=ide -boot order=a -netdev user,id=n0 -device rtl8139,netdev=n0
 ```
 
 WSL/Linux:
 ```bash
 qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
-                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a
+                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a \
+                 -netdev user,id=n0 -device rtl8139,netdev=n0
 ```
 
 Prefer **native Windows QEMU** for interactive use: mouse capture
@@ -71,6 +72,7 @@ Scripted end-to-end test pattern (boot, type, screenshot — all headless):
 ```bash
 qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
   -drive format=raw,file=build/fat32.img,if=ide -boot order=a \
+  -netdev user,id=n0 -device rtl8139,netdev=n0 \
   -display none -debugcon file:build/debug.log \
   -monitor telnet:127.0.0.1:4555,server,nowait &
 sleep 2

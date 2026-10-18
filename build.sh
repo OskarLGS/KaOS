@@ -38,7 +38,7 @@ nasm -f elf32 "$KERNEL_DIR/task_switch.asm" -o "$BUILD_DIR/task_switch.o"
 nasm -f elf32 "$KERNEL_DIR/usermode.asm" -o "$BUILD_DIR/usermode.o"
 
 # Compile all .c files dynamically
-for cfile in "$KERNEL_DIR"/*.c "$KERNEL_DIR"/commands/*.c; do
+for cfile in "$KERNEL_DIR"/*.c "$KERNEL_DIR"/commands/*.c "$KERNEL_DIR"/net/*.c; do
   if [ -f "$cfile" ]; then
     obj_name=$(basename "${cfile%.c}.o")
     gcc $CFLAGS -c "$cfile" -o "$BUILD_DIR/$obj_name"

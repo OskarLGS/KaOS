@@ -15,6 +15,7 @@
 #include "terminal.h"
 #include "rtc.h"
 #include "files.h"
+#include "net/net.h"
 
 // ─── Debug helper ─────────────────────────────────────────────────────────────
 // Port 0xE9 is logged by VirtualBox/Bochs to the host debug log (VBox.log).
@@ -173,6 +174,7 @@ void kernel_main() {
         init_mouse();  dbg('M'); // mouse done
     }
     init_ramfs();
+    net_init();        // Probes PCI for an RTL8139; harmless without one
     init_shell();      dbg('S'); // shell done
 
     print_string("Ready.\n\n");

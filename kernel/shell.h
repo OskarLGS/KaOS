@@ -1,7 +1,7 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-#define MAX_COMMANDS 32
+#define MAX_COMMANDS 48
 #define MAX_ARGS 16
 #define SHELL_LINE_MAX 256
 #define HISTORY_SIZE   16
@@ -21,6 +21,13 @@ void shell_handler(char* input);
 // Foreground job: the shell withholds its prompt while `pid` runs, and
 // shell_poll() (called from the input loop) reports how it ended.
 void shell_start_job(int pid);
+// Run `fn` as a foreground kernel task (a builtin that waits for the
+// network, like ping): the prompt waits, Ctrl+C stops it, and a clean
+// exit (code 0) is not reported. `args` is copied; the task reads it
+// with shell_job_args(). Returns the pid or -1.
+int shell_run_job(const char* name, void (*fn)(), const char* args);
+char* shell_job_args();
+
 // A program started with `exec ... &`: it runs alongside the shell (no
 // keyboard) and its end is reported at the next prompt.
 void shell_start_background(int pid);
@@ -41,5 +48,6 @@ void init_cmd_sys();
 void init_cmd_fs();
 void init_cmd_mem();
 void init_cmd_task();
+void init_cmd_net();
 
 #endif
