@@ -28,7 +28,7 @@ Outputs:
 
 The script fails if the kernel outgrows its slot (`KERNEL_SECTORS` at the
 top of build.sh, 512 sectors = 256KB).
-Current size is printed on every build (~107KB used).
+Current size is printed on every build (~120KB used).
 
 ## Run in QEMU
 
