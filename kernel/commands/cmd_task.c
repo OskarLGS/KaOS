@@ -49,7 +49,9 @@ static void cmd_ps(char* args) {
             print_string("    ");
             if (t->state == TASK_RUNNING) print_string("RUN      ");
             else if (t->state == TASK_READY) print_string("READY    ");
-            else print_string("STOPPED  ");
+            else if (t->exit_kind == EXIT_NORMAL) print_string("EXITED   ");
+            else if (t->exit_kind == EXIT_FAULT) print_string("CRASHED  ");
+            else print_string("KILLED   ");
             print_string(t->name);
             print_string("\n");
         }
@@ -66,8 +68,26 @@ static void cmd_kill(char* args) {
     print_string("\n");
 }
 
+// Split `args` in place into space-separated words. Returns the count.
+static int split_args(char* args, char** argv, int max) {
+    int argc = 0;
+    while (*args && argc < max) {
+        while (*args == ' ') *args++ = '\0';
+        if (!*args) break;
+        argv[argc++] = args;
+        while (*args && *args != ' ') args++;
+    }
+    return argc;
+}
+
 static void cmd_exec(char* args) {
-    char *path = args;
+    char* argv[ELF_MAX_ARGS];
+    int argc = split_args(args, argv, ELF_MAX_ARGS);
+    if (argc == 0) {
+        print_string("Usage: exec <path> [args...]\n");
+        return;
+    }
+    char *path = argv[0];
     
     // Simple path parser
     char *slash = 0;
@@ -94,7 +114,7 @@ static void cmd_exec(char* args) {
         print_string("Loading ELF: ");
         print_string(file->name);
         print_string("\n");
-        int pid = elf_load(file);
+        int pid = elf_load(file, argc, argv);
         if (pid >= 0) {
             // Compose into one buffer: the task may already be printing
             // concurrently, so a single atomic print keeps this line intact.
@@ -104,8 +124,10 @@ static void cmd_exec(char* args) {
             append(line, '\n');
             print_string(line);
             // Hand the keyboard to the program so its SYS_READ works; the
-            // shell resumes input when the program exits (kexit clears it).
+            // shell resumes input when the program exits (kexit clears it)
+            // and reports its exit status from shell_poll().
             set_foreground(pid);
+            shell_start_job(pid);
         } else {
             print_string("Failed to load ELF.\n");
         }
@@ -127,7 +149,7 @@ static void cmd_uptime(char* args) {
 void init_cmd_task() {
     register_command("ps", "List running tasks", cmd_ps);
     register_command("kill", "Stop a task by PID", cmd_kill);
-    register_command("exec", "Run an ELF program", cmd_exec);
+    register_command("exec", "Run an ELF program (exec disk/a.elf args)", cmd_exec);
     register_command("uptime", "Show system uptime", cmd_uptime);
     register_command("spin", "Demo: start a CPU-bound task (preemption)", cmd_spin);
 }

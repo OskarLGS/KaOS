@@ -98,12 +98,15 @@ truncate -s 1474560 "$OUTPUT"
 # --- User programs (Ring 3) ---------------------------------------------
 # Built as ELF linked at 0xA00000 (see user/user.ld and kernel/paging.h)
 # and shipped on the FAT32 test disk for `exec disk/app.elf`.
+# Every program is linked with crt0 (user/crt0.asm), which calls
+# main(argc, argv) and exits with its return value.
 echo "[+] Building user programs..."
+nasm -f elf32 user/crt0.asm -o "$BUILD_DIR/user_crt0.o"
 for ufile in user/*.c; do
   [ -f "$ufile" ] || continue
   uname=$(basename "${ufile%.c}")
   gcc $CFLAGS -c "$ufile" -o "$BUILD_DIR/user_$uname.o"
-  ld -m elf_i386 -T user/user.ld "$BUILD_DIR/user_$uname.o" -o "$BUILD_DIR/$uname.elf"
+  ld -m elf_i386 -T user/user.ld "$BUILD_DIR/user_crt0.o" "$BUILD_DIR/user_$uname.o" -o "$BUILD_DIR/$uname.elf"
 done
 
 if command -v mkfs.fat >/dev/null && command -v mcopy >/dev/null; then

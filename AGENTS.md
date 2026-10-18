@@ -119,10 +119,15 @@ FAT32 writes can be verified from the host without booting:
 - The build is **`-O2 -fno-strict-aliasing`**. `-fno-strict-aliasing` is
   mandatory — the FS/ELF code type-puns buffers; do not drop it.
 - All shell output goes through `print_string` (kernel/screen.c). When a
-  print sink is set (`set_print_sink`), output is redirected — that is how
-  the graphical terminal captures command output.
-- The scheduler is **cooperative** (`yield()`), no timer preemption. A
-  task that never yields or syscalls blocks everything else.
+  print sink is set (`set_print_sink`), output is redirected — in desktop
+  mode `terminal_init` installs the graphical terminal as the permanent
+  sink, so output from user programs lands in its window too.
+- The scheduler is **preemptive** (IRQ0 drives `schedule()`), and tasks
+  may still `yield()` cooperatively. Anything touching the task table
+  must save EFLAGS and `cli` (see `kernel/task.c`).
+- `term_grid` rows have a stride of `MAX_TERM_COLS`, not `term_cols`:
+  clear/scroll it row by row or by `sizeof`, never as a flat
+  `term_rows * term_cols` block.
 - ATA waits must keep their timeouts and 0xFF floating-bus checks: with no
   disk attached the status port reads 0xFF with BSY set forever.
 - Design docs for completed features live in `docs/superpowers/specs/`.
@@ -135,6 +140,9 @@ FAT32 writes can be verified from the host without booting:
 3. Headless text boot (`down down ret`) → trail `GTRKS!`, `help` works.
 4. If you touched storage: `ls disk` / `cat disk/hello.txt` /
    `echo x > disk/notes.txt` + host-side `mtype` check.
-5. If you touched tasks/usermode: `exec disk/app.elf` prints and exits,
-   `exec disk/crash.elf` page-faults without taking the system down,
-   `uptime` still answers afterwards.
+5. If you touched tasks/usermode: `exec disk/app.elf` prints and reports
+   `[exited with code 0]`, `exec disk/args.elf a b` lists its argv,
+   `exec disk/crash.elf` reports `[crashed: Page Fault]` without taking
+   the system down, `exec disk/loop.elf` stops on Ctrl+C (`sendkey
+   ctrl-c`), and `uptime` still answers afterwards. Check the desktop
+   terminal too (click it first: the About window starts focused).

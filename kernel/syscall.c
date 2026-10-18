@@ -21,7 +21,8 @@ void syscall_handler(struct registers *r) {
 
     switch (syscall_num) {
         case SYS_EXIT:
-            kexit();
+            // ebx = exit code
+            task_exit((int)r->ebx, EXIT_NORMAL);
             break;
 
         case SYS_READ: {

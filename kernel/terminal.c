@@ -25,18 +25,28 @@ static int  term_cy = 0;
 static char reflow_buf[MAX_TERM_COLS * MAX_TERM_ROWS + MAX_TERM_ROWS + 1];
 
 static char term_line[256];
+static volatile int term_dirty = 0;
 
 window_t* terminal_window() { return term_win; }
 
+int terminal_take_dirty() {
+    int d = term_dirty;
+    term_dirty = 0;
+    return d;
+}
+
+// The grid's row stride is MAX_TERM_COLS, not term_cols, so rows must be
+// moved one at a time (a flat copy of term_rows * term_cols would mix rows).
 static void term_scroll() {
-    memory_copy(&term_grid[1][0], &term_grid[0][0],
-                (term_rows - 1) * term_cols);
+    for (int r = 1; r < term_rows; r++)
+        memory_copy(&term_grid[r][0], &term_grid[r - 1][0], term_cols);
     memory_set((uint8_t*)&term_grid[term_rows - 1][0], ' ', term_cols);
 }
 
 // Grid writer — also installed as the print sink while shell commands run,
 // so everything the shell prints lands here instead of the fullscreen console.
 static void term_putc(char c) {
+    term_dirty = 1;
     if (c == '\n') {
         term_cx = 0;
         term_cy++;
@@ -62,7 +72,7 @@ static void term_print(const char* s) {
 }
 
 static void term_clear() {
-    memory_set((uint8_t*)term_grid, ' ', term_rows * term_cols);
+    memory_set((uint8_t*)term_grid, ' ', sizeof(term_grid));
     term_cx = 0;
     term_cy = 0;
 }
@@ -125,6 +135,11 @@ void terminal_init(window_t* win) {
     term_line[0] = '\0';
     term_print("KaOS Terminal\n");
     term_print("Type 'help' for a list of commands.\n\n> ");
+
+    // The terminal is the desktop's only console: keep it as the print sink
+    // permanently, so user programs (which print from their own task, after
+    // `exec` has returned) and exception reports land here too.
+    set_print_sink(term_putc);
 }
 
 void terminal_handle_key(char c) {
@@ -136,9 +151,7 @@ void terminal_handle_key(char c) {
             term_clear();
             term_print("> ");
         } else {
-            set_print_sink(term_putc);
             shell_handler(term_line);
-            set_print_sink(0);
         }
         term_line[0] = '\0';
     } else if (c == '\b') {

@@ -2,7 +2,7 @@
 
 From bare metal to a full operating system.
 
-> Estado a 2026-06: **Fases 1–4 completas**, Fase 5 casi completa.
+> Estado a 2026-10: **Fases 1–4 completas**, Fase 5 casi completa.
 > Documentación por subsistema en [docs/](docs/README.md); guía de
 > build/test en [AGENTS.md](AGENTS.md).
 
@@ -76,10 +76,12 @@ From bare metal to a full operating system.
       atómico bajo preempción. Reaping de tareas paradas.
 - [ ] **Más syscalls**: `open`/`close`/`read` sobre el VFS, `sbrk` para
       heap de usuario, `getpid`, `sleep`.
-- [ ] **Argumentos a programas**: `exec disk/app.elf hola mundo` →
-      `_start(argc, argv)`.
-- [ ] **Códigos de salida y `wait`**: La shell informa de cómo terminó
-      el programa.
+- [x] **Argumentos a programas**: `exec disk/args.elf hola mundo` →
+      `main(argc, argv)` (crt0 en `user/crt0.asm`; el kernel prepara la pila).
+- [x] **Códigos de salida**: `return` desde `main` / `sys_exit(n)`; la
+      shell espera al programa en primer plano e informa
+      (`[exited with code 42]`, `[crashed: Page Fault]`, `^C`).
+      **Ctrl+C** interrumpe el programa en primer plano.
 - [ ] **Varios programas de usuario a la vez**: Asignación dinámica de
       la región de usuario (hoy: un programa fijo en 0xA00000).
 - [ ] **Espacios de direcciones por proceso**: Un page directory por
@@ -94,7 +96,8 @@ From bare metal to a full operating system.
 - [x] **Borrar ficheros**: `rm` (marca 0xE5 + libera la cadena de clusters).
       Verificado: persiste entre reinicios y desde el host (`mdir`).
 - [ ] **Crear directorios**: `mkdir` (entradas `.` y `..`).
-- [ ] **Liberar clusters al truncar** (hoy quedan huérfanos).
+- [x] **Liberar clusters al truncar**: reescribir un fichero más corto
+      libera la cola de la cadena (verificado con `fsck.fat`).
 - [ ] **Nombres largos (LFN)**: Leer (y luego escribir) entradas UCS-2.
 - [ ] **Rutas multinivel**: `cat disk/docs/sub/leeme.txt` (resolver el
       path en el VFS en vez de un solo nivel en cada comando).

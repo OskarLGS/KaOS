@@ -67,9 +67,11 @@ static void run_desktop() {
     uint32_t last_uptime = (uint32_t)-1;
 
     while (1) {
-        // Route keystrokes to the terminal while its window is focused
-        int typed = 0;
-        if (wm_get_focused() == terminal_window()) {
+        // Route keystrokes to the terminal while its window is focused.
+        // A running foreground program owns the keyboard (SYS_READ).
+        shell_poll();
+        int typed = terminal_take_dirty();
+        if (wm_get_focused() == terminal_window() && get_foreground() == 0) {
             char c;
             while ((c = keyboard_get_char()) != 0) {
                 terminal_handle_key(c);
@@ -158,6 +160,7 @@ void kernel_main() {
     while(1) {
         // Stop consuming keys while a foreground program owns the keyboard
         // (its SYS_READ reads them instead). Still yield so it runs.
+        shell_poll();
         char c = (get_foreground() == 0) ? keyboard_get_char() : 0;
         if (c != 0) {
             if (c == '\n') {

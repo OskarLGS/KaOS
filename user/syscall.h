@@ -15,8 +15,9 @@ static inline int syscall3(int num, int arg1, int arg2, int arg3) {
     return ret;
 }
 
-static inline void sys_exit() {
-    syscall3(SYS_EXIT, 0, 0, 0);
+// Programs normally just return from main (crt0 calls this for them).
+static inline void sys_exit(int code) {
+    syscall3(SYS_EXIT, code, 0, 0);
 }
 
 static inline void sys_write(const char* buf, int len) {

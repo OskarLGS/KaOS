@@ -11,4 +11,8 @@ void terminal_on_resize(window_t* w);
 // The window this terminal is bound to (0 if not initialized)
 window_t* terminal_window();
 
+// 1 if the grid changed since the last call (e.g. a background program
+// printed), so the desktop loop knows to repaint.
+int terminal_take_dirty();
+
 #endif

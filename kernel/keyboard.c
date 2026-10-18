@@ -1,6 +1,7 @@
 #include "keyboard.h"
 #include "ports.h"
 #include "screen.h"
+#include "task.h"
 
 #define SCAN_ENTER 0x1C
 #define SCAN_BACKSPACE 0x0E
@@ -67,8 +68,11 @@ const char scancode_shift[] = {
 
 #define SCAN_LSHIFT 0x2A
 #define SCAN_RSHIFT 0x36
+#define SCAN_CTRL   0x1D   // Left Ctrl (right Ctrl is E0-prefixed, same code)
+#define SCAN_C      0x2E
 
 static int shift_down = 0;
+static int ctrl_down = 0;
 
 static void keyboard_callback(struct registers regs) {
     (void)regs;
@@ -81,6 +85,17 @@ static void keyboard_callback(struct registers regs) {
     }
     if (scancode == (SCAN_LSHIFT | 0x80) || scancode == (SCAN_RSHIFT | 0x80)) {
         shift_down = 0;
+        return;
+    }
+
+    if (scancode == SCAN_CTRL)          { ctrl_down = 1; return; }
+    if (scancode == (SCAN_CTRL | 0x80)) { ctrl_down = 0; return; }
+
+    // Ctrl+C: stop the foreground program. Done here in the IRQ so it
+    // works even when the program never reads input (an endless loop).
+    if (ctrl_down && scancode == SCAN_C) {
+        int fg = get_foreground();
+        if (fg) kill_with(fg, EXIT_INTERRUPTED);
         return;
     }
 

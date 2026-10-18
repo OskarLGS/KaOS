@@ -78,10 +78,12 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **Interrupts (IDT)** — exceptions, PIC remap, hardware IRQs, syscalls.
 - **Drivers** — VGA text, VBE graphics, PS/2 keyboard (with Shift),
   PS/2 mouse, PIT timer, ATA PIO disk (read **and write**).
-- **Multitasking** — cooperative scheduler with `ps`, `kill`, `yield`.
+- **Multitasking** — preemptive scheduler (timer-driven) with `ps`, `kill`.
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.
-- **System calls** — `int 0x80`: `SYS_WRITE`, `SYS_EXIT`.
+- **System calls** — `int 0x80`: `SYS_WRITE`, `SYS_READ`, `SYS_EXIT`.
+- **Programs** — `main(argc, argv)` with arguments from the shell, exit
+  codes reported by the shell, Ctrl+C stops the foreground program.
 - **Filesystems** — VFS + RAMFS + FAT32 (read/write, persists across
   reboots).
 - **Graphical desktop** — double-buffered window manager: dragging,
@@ -99,7 +101,9 @@ clear     Clear the screen               malloc    Allocate memory (demo)
 halt      Halt the CPU                   free      Free memory (free 0xADDR)
 uptime    Show system uptime             paging    Show paging info
 ps        List running tasks             kill      Stop a task by PID
-exec      Run an ELF program in Ring 3 (exec disk/app.elf)
+exec      Run an ELF program in Ring 3 (exec disk/args.elf hola mundo)
+touch     Create an empty file            rm        Delete a file
+spin      Preemption demo (CPU-bound task)
 ```
 
 ## Documentation

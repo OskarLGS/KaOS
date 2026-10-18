@@ -101,8 +101,10 @@ void isr_handler(struct registers r) {
     // Fault raised from Ring 3: the kernel is intact, so contain the
     // damage — kill the offending task and keep the system running.
     if ((r.cs & 0x3) == 3) {
-        print_string("\nUser program terminated.\n> ");
-        kexit(); // Marks the task stopped and schedules away; no return
+        print_string("\n");
+        // Marks the task stopped and schedules away; no return. The shell
+        // reports the crash when it notices its foreground job ended.
+        task_exit((int)r.int_no, EXIT_FAULT);
     }
 
     print_string("\nKERNEL PANIC. Halting.\n");

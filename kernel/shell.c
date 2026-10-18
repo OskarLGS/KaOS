@@ -9,13 +9,11 @@
 #include "elf.h"
 #include "task.h"
 #include "graphics.h"
-
-#include "shell.h"
-#include "util.h"
-#include "screen.h"
+#include "isr.h"
 
 static command_t commands[MAX_COMMANDS];
 static int num_commands = 0;
+static int job_pid = 0; // Foreground program the shell waits on (0 = none)
 
 void register_command(const char* name, const char* description, command_func func) {
     if (num_commands >= MAX_COMMANDS) return;
@@ -96,6 +94,41 @@ void shell_handler(char* input) {
         print_string("'\nType 'help' for a list of commands.\n");
     }
 
-    print_string("> ");
+    if (!job_pid) print_string("> ");
+}
+
+void shell_start_job(int pid) {
+    job_pid = pid;
+}
+
+void shell_poll() {
+    if (!job_pid) return;
+
+    int code;
+    exit_kind_t kind;
+    int st = task_status(job_pid, &code, &kind);
+    if (st == 0) return; // Still running
+
+    // Compose the whole report first: one print_string is atomic.
+    char line[80];
+    line[0] = '\0';
+    if (st < 0) {
+        strcpy(line, "[program ended]");
+    } else if (kind == EXIT_NORMAL) {
+        strcpy(line, "[exited with code ");
+        int_to_ascii(code, line + strlen(line));
+        append(line, ']');
+    } else if (kind == EXIT_FAULT) {
+        strcpy(line, "[crashed: ");
+        strcpy(line + strlen(line), exception_messages[code & 31]);
+        append(line, ']');
+    } else if (kind == EXIT_INTERRUPTED) {
+        strcpy(line, "^C [interrupted]");
+    } else {
+        strcpy(line, "[killed]");
+    }
+    strcpy(line + strlen(line), "\n> ");
+    job_pid = 0;
+    print_string(line);
 }
 

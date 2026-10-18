@@ -16,6 +16,11 @@ void init_shell();
 void register_command(const char* name, const char* description, command_func func);
 void shell_handler(char* input);
 
+// Foreground job: the shell withholds its prompt while `pid` runs, and
+// shell_poll() (called from the input loop) reports how it ended.
+void shell_start_job(int pid);
+void shell_poll();
+
 // Command initialization prototypes
 void init_cmd_sys();
 void init_cmd_fs();

@@ -6,8 +6,42 @@
 #include "task.h"
 #include "screen.h"
 
-int elf_load(fs_node_t *file) {
+// Lay out argc/argv at the top of the user stack, the way crt0
+// (user/crt0.asm) expects it: [esp] = argc, [esp+4] = argv, with argv
+// pointing at a NULL-terminated array of strings stored just above.
+// Returns the initial user stack pointer.
+static uint32_t setup_user_stack(int argc, char** argv) {
+    uint32_t sp = USER_STACK_TOP;
+    uint32_t ptrs[ELF_MAX_ARGS];
+
+    for (int i = argc - 1; i >= 0; i--) {
+        int len = strlen(argv[i]) + 1;
+        sp -= len;
+        memory_copy(argv[i], (char*)sp, len);
+        ptrs[i] = sp;
+    }
+    sp &= ~3u;
+
+    sp -= 4; *(uint32_t*)sp = 0;            // argv[argc] = NULL
+    for (int i = argc - 1; i >= 0; i--) {
+        sp -= 4; *(uint32_t*)sp = ptrs[i];
+    }
+    uint32_t argv_addr = sp;
+    sp -= 4; *(uint32_t*)sp = argv_addr;
+    sp -= 4; *(uint32_t*)sp = (uint32_t)argc;
+    return sp;
+}
+
+int elf_load(fs_node_t *file, int argc, char** argv) {
     if (!file) return -1;
+    if (argc < 0 || argc > ELF_MAX_ARGS) return -1;
+
+    // Every program is linked at USER_BASE: loading a second one would
+    // overwrite the code of the one still running.
+    if (user_task_running()) {
+        print_string("ELF: Another user program is still running\n");
+        return -1;
+    }
 
     Elf32_Ehdr header;
     if (read_fs(file, 0, sizeof(Elf32_Ehdr), (uint8_t*)&header) != sizeof(Elf32_Ehdr)) {
@@ -78,5 +112,6 @@ int elf_load(fs_node_t *file) {
 
     // Run it in Ring 3
     print_string("ELF: Launching in user mode (Ring 3)\n");
-    return create_user_task(file->name, header.e_entry);
+    uint32_t user_esp = setup_user_stack(argc, argv);
+    return create_user_task(file->name, header.e_entry, user_esp);
 }

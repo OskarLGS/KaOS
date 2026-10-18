@@ -32,16 +32,46 @@ an interrupt or syscall arrives while running in Ring 3.
 
 ## Launching a program
 
-`exec disk/app.elf` →
+`exec disk/app.elf hola mundo` →
 
-1. `elf_load` (kernel/elf.c) copies each PT_LOAD segment to its real
-   `p_vaddr` (validated inside the user region) and zeroes the BSS.
+1. `cmd_exec` splits the line into words (`argv[0]` = the path).
+   `elf_load` (kernel/elf.c) refuses to run while another user program
+   is alive (they all link at 0xA00000), copies each PT_LOAD segment to
+   its real `p_vaddr` (validated inside the user region), zeroes the
+   BSS and lays out `argc`/`argv` at the top of the user stack.
 2. `create_user_task` creates a normal kernel task whose entry is
    `user_bootstrap`: it points `tss.esp0` at this task's kernel stack
-   and calls `enter_user_mode(entry, USER_STACK_TOP)`.
+   and calls `enter_user_mode(entry, user_esp)`.
 3. `enter_user_mode` (usermode.asm) loads the user data selectors,
    builds an `iret` frame (`SS=0x23, ESP, EFLAGS|IF, CS=0x1B, EIP`)
    and drops privilege. There is no way back except interrupts.
+4. `_start` in `user/crt0.asm` (linked into every program) calls
+   `main(argc, argv)` and passes its return value to SYS_EXIT.
+
+Initial user stack (grows down from `USER_STACK_TOP`):
+
+```
+USER_STACK_TOP  argument strings ("disk/app.elf\0hola\0mundo\0")
+                argv[0..argc-1], NULL      (4-byte aligned)
+                argv  (pointer to the array above)
+esp ->          argc
+```
+
+## Exit status
+
+`task_exit(code, kind)` records how a task ended in `task_t`:
+
+| Kind | Cause | Shell report |
+|------|-------|--------------|
+| `EXIT_NORMAL` | SYS_EXIT / return from `main` | `[exited with code N]` |
+| `EXIT_FAULT` | CPU exception in Ring 3 (code = vector) | `[crashed: Page Fault]` |
+| `EXIT_KILLED` | `kill PID` | `[killed]` |
+| `EXIT_INTERRUPTED` | Ctrl+C (keyboard IRQ) | `^C [interrupted]` |
+
+`exec` makes the program the foreground job: it owns the keyboard and
+the shell withholds its prompt. `shell_poll()`, called from the input
+loop, notices when the job stopped, prints the report and the prompt.
+`ps` shows stopped tasks as EXITED / CRASHED / KILLED.
 
 ## System calls
 
@@ -50,23 +80,34 @@ Register convention: `eax` = number, `ebx/ecx/edx` = args.
 
 | eax | Syscall | Args |
 |-----|---------|------|
-| 1 | SYS_EXIT | — |
+| 1 | SYS_EXIT | ebx=exit code |
+| 3 | SYS_READ | ebx=fd(0), ecx=buffer, edx=max length |
 | 4 | SYS_WRITE | ebx=fd(1), ecx=buffer, edx=length |
 
-Userland wrappers live in `user/syscall.h`. SYS_EXIT calls `kexit()`,
+Userland wrappers live in `user/syscall.h`. SYS_EXIT calls `task_exit()`,
 which marks the task stopped and schedules away — it never returns.
 
 ## Fault containment
 
 `isr_handler` checks the saved CS: if the faulting code was Ring 3
-(`cs & 3 == 3`), it prints the exception, kills the current task and
-keeps the system running. Only kernel (Ring 0) faults halt the machine.
+(`cs & 3 == 3`), it prints the exception, stops the current task with
+`EXIT_FAULT` and keeps the system running. Only kernel (Ring 0) faults halt the machine.
 Demo: `exec disk/crash.elf` writes to a kernel address, gets a page
 fault, and the shell survives.
 
 ## Limitations (by design, for now)
 
-- One user program at a time; the scheduler is cooperative, so the
-  program runs until it exits, faults, or syscalls.
-- No SYS_READ yet; no per-process address spaces (all user tasks share
-  the identity-mapped user region).
+- One user program at a time (fixed load address 0xA00000).
+- No per-process address spaces (all user tasks share the
+  identity-mapped user region).
+
+## Demo programs (user/)
+
+| Program | Shows |
+|---------|-------|
+| `app.elf` | SYS_WRITE, clean exit |
+| `ask.elf` | SYS_READ (asks your name) |
+| `args.elf a b` | `argc`/`argv`; exits with the argument count |
+| `exit.elf 42` | Exit codes |
+| `loop.elf` | Ctrl+C on a program that never yields |
+| `crash.elf` | Fault containment |

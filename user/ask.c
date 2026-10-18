@@ -12,7 +12,7 @@ static int slen(const char* s) {
     return n;
 }
 
-void _start(void) {
+int main(void) {
     char name[64];
 
     sys_write("What's your name? ", 18);
@@ -23,7 +23,5 @@ void _start(void) {
     sys_write("Hello, ", 7);
     sys_write(name, slen(name));
     sys_write("! Welcome to Ring 3.\n", 21);
-
-    sys_exit();
-    for (;;);
+    return 0;
 }

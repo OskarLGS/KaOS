@@ -66,6 +66,9 @@ int create_task(const char* name, void (*entry)()) {
     t->id = next_pid++;
     t->state = TASK_READY;
     t->user_entry = 0;
+    t->user_esp = 0;
+    t->exit_code = 0;
+    t->exit_kind = EXIT_NORMAL;
 
     uint32_t* stack_top = (uint32_t*)(t->stack + TASK_STACK_SIZE);
 
@@ -89,16 +92,17 @@ int create_task(const char* name, void (*entry)()) {
 static void user_bootstrap() {
     task_t* t = &tasks[current_task];
     tss_set_kernel_stack((uint32_t)(t->stack + TASK_STACK_SIZE));
-    enter_user_mode(t->user_entry, USER_STACK_TOP);
+    enter_user_mode(t->user_entry, t->user_esp);
 }
 
-int create_user_task(const char* name, uint32_t entry) {
+int create_user_task(const char* name, uint32_t entry, uint32_t user_esp) {
     int pid = create_task(name, user_bootstrap);
     if (pid < 0) return pid;
 
     for (int i = 0; i < task_count; i++) {
         if (tasks[i].id == pid) {
             tasks[i].user_entry = entry;
+            tasks[i].user_esp = user_esp;
             break;
         }
     }
@@ -161,9 +165,32 @@ int get_current_task_id() {
     return (current_task >= 0) ? tasks[current_task].id : -1;
 }
 
+int task_status(int pid, int* code, exit_kind_t* kind) {
+    for (int i = 0; i < task_count; i++) {
+        if ((int)tasks[i].id != pid) continue;
+        if (tasks[i].state != TASK_STOPPED) return 0;
+        *code = tasks[i].exit_code;
+        *kind = tasks[i].exit_kind;
+        return 1;
+    }
+    return -1;
+}
+
+int user_task_running() {
+    for (int i = 1; i < task_count; i++)
+        if (tasks[i].user_entry && tasks[i].state != TASK_STOPPED) return 1;
+    return 0;
+}
+
 void kexit() {
+    task_exit(0, EXIT_NORMAL);
+}
+
+void task_exit(int code, exit_kind_t kind) {
     __asm__ __volatile__("cli");
     if (current_task > 0) { // Never exit the shell (task 0)
+        tasks[current_task].exit_code = code;
+        tasks[current_task].exit_kind = kind;
         tasks[current_task].state = TASK_STOPPED;
         // Hand keyboard control back to the shell if we owned it
         if (foreground_pid == (int)tasks[current_task].id) foreground_pid = 0;
@@ -172,10 +199,19 @@ void kexit() {
 }
 
 void kill(int pid) {
+    kill_with(pid, EXIT_KILLED);
+}
+
+// Safe from IRQ context (Ctrl+C): only flips state; the scheduler never
+// picks a stopped task again, so it is gone by the next switch.
+void kill_with(int pid, exit_kind_t kind) {
     uint32_t eflags;
     __asm__ __volatile__("pushf; pop %0; cli" : "=r"(eflags));
     for (int i = 0; i < task_count; i++) {
         if (tasks[i].id == pid && i != 0) { // Can't kill the shell
+            if (tasks[i].state == TASK_STOPPED) break; // Keep its real status
+            tasks[i].exit_code = -1;
+            tasks[i].exit_kind = kind;
             tasks[i].state = TASK_STOPPED;
             if (foreground_pid == pid) foreground_pid = 0;
             break;
