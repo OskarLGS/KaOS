@@ -6,8 +6,6 @@
 netif_t netif;
 
 void eth_receive(const uint8_t* frame, uint32_t len);
-void dhcp_start();
-void tcp_tick();
 
 // Bottom half of the driver: a kernel task polls the card every tick and
 // runs each frame up the stack (with the network lock held).
@@ -20,19 +18,26 @@ static void net_task() {
     }
 }
 
+// Configure the interface at boot; if no DHCP server answers, fall back
+// to QEMU's user-mode network addresses.
+static void dhcp_task() {
+    if (dhcp_configure()) return;
+    uint32_t f = net_lock();
+    netif.ip      = IP4(10, 0, 2, 15);
+    netif.mask    = IP4(255, 255, 255, 0);
+    netif.gateway = IP4(10, 0, 2, 2);
+    netif.dns     = IP4(10, 0, 2, 3);
+    net_unlock(f);
+}
+
 void net_init() {
     memory_set((uint8_t*)&netif, 0, sizeof(netif));
     if (!rtl8139_init()) return;
     rtl8139_mac(netif.mac);
     netif.up = 1;
 
-    // QEMU user-mode networking defaults until DHCP (step 2) configures us
-    netif.ip      = IP4(10, 0, 2, 15);
-    netif.mask    = IP4(255, 255, 255, 0);
-    netif.gateway = IP4(10, 0, 2, 2);
-    netif.dns     = IP4(10, 0, 2, 3);
-
     create_task("net", net_task);
+    create_task("dhcp", dhcp_task);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

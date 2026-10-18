@@ -20,12 +20,38 @@ static void print_ip(const char* label, uint32_t ip) {
     print_field(label, s);
 }
 
+// "ifconfig ip|mask|gateway|dns <a.b.c.d>": set one field by hand
+static int ifconfig_set(char* args) {
+    while (*args == ' ') args++;
+    char* val = args;
+    while (*val && *val != ' ') val++;
+    if (!*val) return 0;
+    *val++ = '\0';
+    while (*val == ' ') val++;
+
+    uint32_t* field = 0;
+    if (strcmp(args, "ip") == 0) field = &netif.ip;
+    else if (strcmp(args, "mask") == 0) field = &netif.mask;
+    else if (strcmp(args, "gateway") == 0) field = &netif.gateway;
+    else if (strcmp(args, "dns") == 0) field = &netif.dns;
+    uint32_t ip;
+    if (!field || !str_to_ip(val, &ip)) {
+        print_string("Usage: ifconfig [ip|mask|gateway|dns a.b.c.d]\n");
+        return 1;
+    }
+    uint32_t f = net_lock();
+    *field = ip;
+    net_unlock(f);
+    print_string("Set.\n");
+    return 1;
+}
+
 static void cmd_ifconfig(char* args) {
-    (void)args;
     if (!netif.up) {
         print_string("No network card (start QEMU with -device rtl8139).\n");
         return;
     }
+    if (ifconfig_set(args)) return;
     char mac[18];
     mac_to_str(netif.mac, mac);
     print_field("eth0     RTL8139  mac ", mac);
@@ -33,7 +59,9 @@ static void cmd_ifconfig(char* args) {
     print_ip("  netmask  ", netif.mask);
     print_ip("  gateway  ", netif.gateway);
     print_ip("  dns      ", netif.dns);
-    print_string(netif.configured ? "  config   DHCP\n" : "  config   static defaults\n");
+    print_string(netif.configured ? "  config   DHCP\n"
+                 : netif.ip ? "  config   static (no DHCP answer)\n"
+                 : "  config   waiting for DHCP...\n");
 }
 
 static void cmd_arp(char* args) {
@@ -68,8 +96,12 @@ static void ping_job() {
     }
 
     uint32_t dst;
-    if (!str_to_ip(args, &dst)) {
-        print_string("Usage: ping <a.b.c.d> [count]\n");
+    if (!*args) {
+        print_string("Usage: ping <host> [count]\n");
+        task_exit(2, EXIT_NORMAL);
+    }
+    if (!dns_resolve(args, &dst)) {
+        print_string("ping: unknown host\n");
         task_exit(2, EXIT_NORMAL);
     }
 
@@ -127,8 +159,53 @@ static void cmd_ping(char* args) {
         print_string("Could not start ping.\n");
 }
 
+static void dhcp_job() {
+    print_string("Asking for an address (DHCP)...\n");
+    if (!dhcp_configure()) {
+        print_string("No DHCP answer; keeping the old settings.\n");
+        task_exit(1, EXIT_NORMAL);
+    }
+    char s[16], line[48];
+    ip_to_str(netif.ip, s);
+    strcpy(line, "Configured: ");
+    strcpy(line + strlen(line), s);
+    append(line, '\n');
+    print_string(line);
+}
+
+static void cmd_dhcp(char* args) {
+    (void)args;
+    if (!netif.up) { print_string("No network card.\n"); return; }
+    shell_run_job("dhcp", dhcp_job, "");
+}
+
+static void host_job() {
+    char* name = shell_job_args();
+    while (*name == ' ') name++;
+    uint32_t ip;
+    if (!*name) { print_string("Usage: host <name>\n"); task_exit(2, EXIT_NORMAL); }
+    if (!dns_resolve(name, &ip)) {
+        print_string("Host not found (or no DNS answer).\n");
+        task_exit(1, EXIT_NORMAL);
+    }
+    char s[16], line[160];
+    ip_to_str(ip, s);
+    strcpy(line, name);
+    strcpy(line + strlen(line), " has address ");
+    strcpy(line + strlen(line), s);
+    append(line, '\n');
+    print_string(line);
+}
+
+static void cmd_host(char* args) {
+    if (!netif.up) { print_string("No network card.\n"); return; }
+    shell_run_job("host", host_job, args);
+}
+
 void init_cmd_net() {
-    register_command("ifconfig", "Show the network interface", cmd_ifconfig);
+    register_command("dhcp", "Renew the address with DHCP", cmd_dhcp);
+    register_command("host", "Resolve a name with DNS (host example.com)", cmd_host);
+    register_command("ifconfig", "Show/set the interface (ifconfig dns 10.0.2.3)", cmd_ifconfig);
     register_command("arp", "Show the ARP cache", cmd_arp);
     register_command("ping", "Ping a host (ping 10.0.2.2 [count])", cmd_ping);
 }

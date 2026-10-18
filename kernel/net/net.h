@@ -75,6 +75,20 @@ int  icmp_send_echo(uint32_t dst, uint16_t id, uint16_t seq);
 // 1 once the reply for `seq` arrived (fills its ttl); cleared on send.
 int  icmp_echo_reply(uint16_t seq, uint8_t* ttl);
 
+// UDP
+typedef void (*udp_handler_t)(uint32_t src, uint16_t sport, const uint8_t* data, uint32_t len);
+int  udp_bind(uint16_t port, udp_handler_t fn);   // Handler runs in the net task
+void udp_unbind(uint16_t port);
+int  udp_send(uint32_t dst, uint16_t sport, uint16_t dport,
+              const void* data, uint32_t len, uint32_t wait_ms);
+uint32_t pseudo_sum(uint32_t src, uint32_t dst, uint8_t proto, uint16_t len);
+
+// DHCP: configure netif. Runs in task context; returns 1 on success.
+int  dhcp_configure();
+
+// DNS: resolve `name` (or a dotted IP) to an address. Task context.
+int  dns_resolve(const char* name, uint32_t* ip);
+
 // Helpers
 void ip_to_str(uint32_t ip, char* out);        // "10.0.2.15" (16 bytes)
 int  str_to_ip(const char* s, uint32_t* ip);   // 1 if it parsed
