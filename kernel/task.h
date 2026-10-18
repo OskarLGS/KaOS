@@ -2,9 +2,11 @@
 #define TASK_H
 
 #include <stdint.h>
+#include "vfs.h"
 
 #define MAX_TASKS 8
 #define TASK_STACK_SIZE 4096
+#define MAX_FDS 8          // Per task; 0/1/2 are the console (never opened)
 
 typedef enum {
     TASK_RUNNING,
@@ -20,6 +22,13 @@ typedef enum {
     EXIT_INTERRUPTED  // Ctrl+C on the foreground program
 } exit_kind_t;
 
+// An open file (SYS_OPEN). Slots 0-2 stay empty: they mean the console.
+typedef struct {
+    fs_node_t* node;     // 0 = slot free
+    uint32_t offset;     // Next read/write position
+    uint32_t flags;      // O_* flags it was opened with
+} file_t;
+
 typedef struct {
     uint32_t esp;        // Saved stack pointer
     uint32_t ebp;        // Saved base pointer
@@ -31,12 +40,19 @@ typedef struct {
     uint32_t user_esp;   // Initial Ring 3 stack pointer (argc/argv laid out)
     int exit_code;       // Valid once state == TASK_STOPPED
     exit_kind_t exit_kind;
+    uint32_t wake_tick;  // Not scheduled before this timer tick (sleep)
+    uint32_t user_brk;   // End of the Ring 3 heap (sbrk); 0 = kernel task
+    file_t files[MAX_FDS];
     uint8_t stack[TASK_STACK_SIZE]; // Kernel stack (also syscall stack via TSS)
 } task_t;
 
 void tasking_init();
 int create_task(const char* name, void (*entry)());
-int create_user_task(const char* name, uint32_t entry, uint32_t user_esp);
+int create_user_task(const char* name, uint32_t entry, uint32_t user_esp,
+                     uint32_t user_brk);
+task_t* current_task_ptr();
+// Block the current task for at least `ticks` timer ticks.
+void task_sleep(uint32_t ticks);
 
 // Exit status of `pid`: returns 1 and fills code/kind once it has stopped,
 // 0 while it still runs, -1 if no such task exists (slot recycled).

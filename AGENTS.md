@@ -125,6 +125,11 @@ FAT32 writes can be verified from the host without booting:
 - The scheduler is **preemptive** (IRQ0 drives `schedule()`), and tasks
   may still `yield()` cooperatively. Anything touching the task table
   must save EFLAGS and `cli` (see `kernel/task.c`).
+- `kmalloc`/`kfree` run with interrupts off (shared by all tasks and
+  reached from the Ctrl+C IRQ). Release `finddir`/`vfs_resolve` results
+  with `vfs_release()` — FAT32 hands out heap nodes.
+- User programs: any inline `int 0x80` must clobber `"memory"` (see
+  `user/syscall.h`), or GCC drops stores to buffers the kernel reads.
 - `term_grid` rows have a stride of `MAX_TERM_COLS`, not `term_cols`:
   clear/scroll it row by row or by `sizeof`, never as a flat
   `term_rows * term_cols` block.
@@ -143,6 +148,8 @@ FAT32 writes can be verified from the host without booting:
 5. If you touched tasks/usermode: `exec disk/app.elf` prints and reports
    `[exited with code 0]`, `exec disk/args.elf a b` lists its argv,
    `exec disk/crash.elf` reports `[crashed: Page Fault]` without taking
-   the system down, `exec disk/loop.elf` stops on Ctrl+C (`sendkey
+   the system down, `exec disk/cp.elf readme.txt disk/docs/c.txt` +
+   `cat disk/docs/c.txt`, `exec disk/sleep.elf 2`, `exec disk/heap.elf`,
+   `exec disk/loop.elf` stops on Ctrl+C (`sendkey
    ctrl-c`), and `uptime` still answers afterwards. Check the desktop
    terminal too (click it first: the About window starts focused).

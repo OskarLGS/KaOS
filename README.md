@@ -81,11 +81,12 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **Multitasking** — preemptive scheduler (timer-driven) with `ps`, `kill`.
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.
-- **System calls** — `int 0x80`: `SYS_WRITE`, `SYS_READ`, `SYS_EXIT`.
+- **System calls** — `int 0x80`: `exit`, `read`, `write`, `open`, `close`,
+  `getpid`, `sbrk`, `sleep` (file descriptors over the VFS).
 - **Programs** — `main(argc, argv)` with arguments from the shell, exit
   codes reported by the shell, Ctrl+C stops the foreground program.
 - **Filesystems** — VFS + RAMFS + FAT32 (read/write, persists across
-  reboots).
+  reboots), multi-level paths (`cat disk/docs/readme.txt`).
 - **Graphical desktop** — double-buffered window manager: dragging,
   focus, minimize, close, taskbar with per-window buttons and a start
   menu, live "About" window, and a full **graphical terminal** running

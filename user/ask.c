@@ -1,9 +1,5 @@
 // Interactive Ring 3 program: asks for your name and greets you.
 // Demonstrates SYS_READ (blocking keyboard input) from user mode.
-//
-// Note: pass string literals straight to sys_write. A `char buf[] = "..."`
-// local relies on the compiler synthesising the initialiser (a memcpy or
-// inline stores) which is unreliable in this freestanding -O2 build.
 #include "syscall.h"
 
 static int slen(const char* s) {

@@ -6,6 +6,16 @@ Every filesystem exposes `fs_node_t` objects with function pointers
 (`read`, `write`, `readdir`, `finddir`). Generic wrappers (`read_fs`,
 `write_fs`, ...) dispatch through them. `fs_root` is the root node.
 
+Paths:
+- `vfs_resolve("disk/docs/notes.txt")` walks any number of levels with
+  one `finddir` per component (leading/repeated `/` ignored).
+- `vfs_resolve_parent(path, leaf)` stops one level early and returns the
+  parent directory plus the leaf name (for create/unlink).
+- `finddir` may return a heap node: FAT32 sets `FS_ALLOCATED` (0x80) in
+  `flags`. Always hand results to `vfs_release()`, which frees only those
+  (RAMFS nodes and the FAT32 root are static). Mask the type with
+  `flags & 0x7`.
+
 Node fields worth knowing:
 - `inode` — filesystem-specific. FAT32 stores the **first cluster** here.
 - `length` — file size in bytes (reads/writes are clamped to it).
@@ -53,8 +63,9 @@ layout, no partition table).
 - Wired through the VFS `create`/`unlink` ops on directory nodes.
 
 ### Not supported yet
-`mkdir`, freeing clusters on truncate, long filenames (LFN), nested-path
-resolution, file timestamps (no RTC — new files show 1980).
+`mkdir`, long filenames (LFN), file timestamps (no RTC — new files
+show 1980). A write sets the file size to the end of that write (fine
+for sequential writes from offset 0; there is no append-in-the-middle).
 
 ## Shell usage
 

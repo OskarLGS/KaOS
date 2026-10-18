@@ -81,8 +81,31 @@ Register convention: `eax` = number, `ebx/ecx/edx` = args.
 | eax | Syscall | Args |
 |-----|---------|------|
 | 1 | SYS_EXIT | ebx=exit code |
-| 3 | SYS_READ | ebx=fd(0), ecx=buffer, edx=max length |
-| 4 | SYS_WRITE | ebx=fd(1), ecx=buffer, edx=length |
+| 3 | SYS_READ | ebx=fd (0 = keyboard line, 3+ = file), ecx=buffer, edx=max → bytes, 0 at EOF |
+| 4 | SYS_WRITE | ebx=fd (1/2 = console, 3+ = file), ecx=buffer, edx=length |
+| 5 | SYS_OPEN | ebx=path, ecx=flags (`O_RDONLY/O_WRONLY/O_RDWR`, `O_CREAT`) → fd |
+| 6 | SYS_CLOSE | ebx=fd |
+| 20 | SYS_GETPID | → pid |
+| 45 | SYS_SBRK | ebx=increment → previous break (sbrk semantics in brk's slot) |
+| 162 | SYS_SLEEP | ebx=milliseconds (nanosleep's slot; 10 ms resolution) |
+
+Numbers follow Linux i386 where a call exists; every error returns -1.
+Pointers are checked to lie in the user region (`user_range_ok`, and
+byte by byte for path strings) before the kernel touches them.
+
+- **Files**: each task has `files[MAX_FDS]` (8; 0-2 are the console and
+  never allocated). Paths go through `vfs_resolve`, so they work on
+  RAMFS and FAT32 alike (`cp.elf readme.txt disk/docs/copia.txt`).
+  Files still open when a task stops (exit, crash, kill, Ctrl+C) are
+  closed for it.
+- **Heap**: the break starts at the first page after the program image
+  and may grow to 64 KB below the stack top. New memory is zeroed.
+- **Sleep**: sets `wake_tick`; `schedule()` skips the task until then,
+  so a sleeping program costs no CPU.
+
+`user/syscall.h` wraps them (`sys_open`, `sys_read_fd`, `sys_sbrk`, ...).
+Its `int 0x80` asm declares a `"memory"` clobber — without it GCC drops
+stores to local buffers before the syscall reads them.
 
 Userland wrappers live in `user/syscall.h`. SYS_EXIT calls `task_exit()`,
 which marks the task stopped and schedules away — it never returns.
@@ -111,3 +134,7 @@ fault, and the shell survives.
 | `exit.elf 42` | Exit codes |
 | `loop.elf` | Ctrl+C on a program that never yields |
 | `crash.elf` | Fault containment |
+| `cat.elf path` | SYS_OPEN / SYS_READ |
+| `cp.elf from to` | Copy across RAMFS and FAT32 (O_CREAT, SYS_WRITE to a file) |
+| `sleep.elf 3` | SYS_SLEEP + SYS_GETPID countdown |
+| `heap.elf` | SYS_SBRK: 64 KB heap, oversized request refused |

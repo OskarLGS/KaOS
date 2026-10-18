@@ -3,6 +3,7 @@
 #include "screen.h"
 #include "gdt.h"
 #include "paging.h"
+#include "timer.h"
 
 // Defined in usermode.asm — builds an iret frame and drops to Ring 3
 extern void enter_user_mode(uint32_t entry, uint32_t user_stack_top);
@@ -69,6 +70,9 @@ int create_task(const char* name, void (*entry)()) {
     t->user_esp = 0;
     t->exit_code = 0;
     t->exit_kind = EXIT_NORMAL;
+    t->wake_tick = 0;
+    t->user_brk = 0;
+    memory_set((uint8_t*)t->files, 0, sizeof(t->files));
 
     uint32_t* stack_top = (uint32_t*)(t->stack + TASK_STACK_SIZE);
 
@@ -95,7 +99,8 @@ static void user_bootstrap() {
     enter_user_mode(t->user_entry, t->user_esp);
 }
 
-int create_user_task(const char* name, uint32_t entry, uint32_t user_esp) {
+int create_user_task(const char* name, uint32_t entry, uint32_t user_esp,
+                     uint32_t user_brk) {
     int pid = create_task(name, user_bootstrap);
     if (pid < 0) return pid;
 
@@ -103,6 +108,7 @@ int create_user_task(const char* name, uint32_t entry, uint32_t user_esp) {
         if (tasks[i].id == pid) {
             tasks[i].user_entry = entry;
             tasks[i].user_esp = user_esp;
+            tasks[i].user_brk = user_brk;
             break;
         }
     }
@@ -121,8 +127,12 @@ void schedule() {
     int prev = current_task;
     int next = (current_task + 1) % task_count;
 
+    // A sleeping task is READY but skipped until its wake tick. The shell
+    // (task 0) never sleeps, so there is always something to run.
+    uint32_t now = get_tick();
     while (next != current_task) {
-        if (tasks[next].state == TASK_READY || tasks[next].state == TASK_RUNNING) {
+        if ((tasks[next].state == TASK_READY || tasks[next].state == TASK_RUNNING)
+            && (int32_t)(now - tasks[next].wake_tick) >= 0) {
             break;
         }
         next = (next + 1) % task_count;
@@ -161,6 +171,29 @@ task_t* get_task(int index) {
     return &tasks[index];
 }
 
+task_t* current_task_ptr() {
+    return (current_task >= 0) ? &tasks[current_task] : 0;
+}
+
+void task_sleep(uint32_t ticks) {
+    task_t* t = current_task_ptr();
+    if (!t || current_task == 0) return; // The shell must never sleep
+    t->wake_tick = get_tick() + ticks;
+    // schedule() skips us until wake_tick; loop in case we are picked
+    // again early (e.g. we are the only runnable task besides the shell).
+    while ((int32_t)(get_tick() - t->wake_tick) < 0) yield();
+}
+
+// Close every file a stopped task left open (called with IF=0).
+static void close_files(task_t* t) {
+    for (int fd = 0; fd < MAX_FDS; fd++) {
+        if (t->files[fd].node) {
+            vfs_release(t->files[fd].node);
+            t->files[fd].node = 0;
+        }
+    }
+}
+
 int get_current_task_id() {
     return (current_task >= 0) ? tasks[current_task].id : -1;
 }
@@ -192,6 +225,7 @@ void task_exit(int code, exit_kind_t kind) {
         tasks[current_task].exit_code = code;
         tasks[current_task].exit_kind = kind;
         tasks[current_task].state = TASK_STOPPED;
+        close_files(&tasks[current_task]);
         // Hand keyboard control back to the shell if we owned it
         if (foreground_pid == (int)tasks[current_task].id) foreground_pid = 0;
     }
@@ -213,6 +247,7 @@ void kill_with(int pid, exit_kind_t kind) {
             tasks[i].exit_code = -1;
             tasks[i].exit_kind = kind;
             tasks[i].state = TASK_STOPPED;
+            close_files(&tasks[i]);
             if (foreground_pid == pid) foreground_pid = 0;
             break;
         }

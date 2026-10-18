@@ -80,6 +80,8 @@ int elf_load(fs_node_t *file, int argc, char** argv) {
         return -1;
     }
 
+    uint32_t image_end = USER_BASE;
+
     // Load segments at their linked virtual address. The user region is
     // identity-mapped with the User bit, so copying to p_vaddr is enough.
     for (int i = 0; i < header.e_phnum; i++) {
@@ -99,6 +101,7 @@ int elf_load(fs_node_t *file, int argc, char** argv) {
             }
 
             read_fs(file, phdrs[i].p_offset, phdrs[i].p_filesz, (uint8_t*)start);
+            if (end > image_end) image_end = end;
 
             // Zero the BSS part of the segment
             if (phdrs[i].p_memsz > phdrs[i].p_filesz) {
@@ -113,5 +116,7 @@ int elf_load(fs_node_t *file, int argc, char** argv) {
     // Run it in Ring 3
     print_string("ELF: Launching in user mode (Ring 3)\n");
     uint32_t user_esp = setup_user_stack(argc, argv);
-    return create_user_task(file->name, header.e_entry, user_esp);
+    // The heap (sbrk) starts at the first page after the program image
+    uint32_t brk = (image_end + 0xFFF) & ~0xFFFu;
+    return create_user_task(file->name, header.e_entry, user_esp, brk);
 }

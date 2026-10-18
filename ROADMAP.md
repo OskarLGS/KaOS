@@ -74,8 +74,10 @@ From bare metal to a full operating system.
       pide tu nombre). Bloqueante vía yield; modelo de foreground para
       la propiedad del teclado entre shell y programa. `print_string`
       atómico bajo preempción. Reaping de tareas paradas.
-- [ ] **Más syscalls**: `open`/`close`/`read` sobre el VFS, `sbrk` para
-      heap de usuario, `getpid`, `sleep`.
+- [x] **Más syscalls**: `open`/`close`/`read`/`write` sobre el VFS con
+      tabla de descriptores por tarea, `sbrk` (heap de usuario), `getpid`
+      y `sleep` (estado dormido real en el planificador). Demos: `cat.elf`,
+      `cp.elf`, `sleep.elf`, `heap.elf`.
 - [x] **Argumentos a programas**: `exec disk/args.elf hola mundo` →
       `main(argc, argv)` (crt0 en `user/crt0.asm`; el kernel prepara la pila).
 - [x] **Códigos de salida**: `return` desde `main` / `sys_exit(n)`; la
@@ -99,11 +101,12 @@ From bare metal to a full operating system.
 - [x] **Liberar clusters al truncar**: reescribir un fichero más corto
       libera la cola de la cadena (verificado con `fsck.fat`).
 - [ ] **Nombres largos (LFN)**: Leer (y luego escribir) entradas UCS-2.
-- [ ] **Rutas multinivel**: `cat disk/docs/sub/leeme.txt` (resolver el
-      path en el VFS en vez de un solo nivel en cada comando).
+- [x] **Rutas multinivel**: `vfs_resolve` recorre cualquier profundidad
+      (`cat disk/docs/sub/leeme.txt`); lo usan la shell y `SYS_OPEN`.
 - [ ] **RTC (CMOS)**: Fecha/hora real para timestamps de ficheros y el
       reloj de la Fase 5.
-- [ ] **cp / mv** entre RAMFS y disco.
+- [ ] **cp / mv** entre RAMFS y disco (`cp.elf` ya copia en espacio de
+      usuario; faltan `mv` y comandos integrados).
 
 ---
 
