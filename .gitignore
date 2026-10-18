@@ -4,3 +4,4 @@ build/*.elf
 build/debug.log
 build/_shot.ppm
 build/_s.ppm
+build/build.log
