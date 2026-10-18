@@ -5,6 +5,7 @@
 #include "screen.h"
 #include "rtc.h"
 #include "vfs.h"
+#include "latin1.h"
 
 static fat32_bpb_t bpb;
 static uint32_t fat_start_sector;
@@ -301,11 +302,10 @@ static void short_display(const uint8_t name83[11], char* out) {
     out[pos] = '\0';
 }
 
+// Case-insensitive, including accented capitals (AÑO.TXT = año.txt)
 static int name_eq_ci(const char* a, const char* b) {
     for (int i = 0; ; i++) {
-        char x = a[i], y = b[i];
-        if (x >= 'A' && x <= 'Z') x += 32;
-        if (y >= 'A' && y <= 'Z') y += 32;
+        uint8_t x = latin1_lower((uint8_t)a[i]), y = latin1_lower((uint8_t)b[i]);
         if (x != y) return 0;
         if (x == '\0') return 1;
     }
@@ -352,7 +352,8 @@ static int dir_walk(uint32_t cluster, dvisit_t visit, void* ctx) {
                         uint16_t ch = raw[lfn_char_off[k]] | (raw[lfn_char_off[k] + 1] << 8);
                         if (ch == 0x0000) { lname[(ord - 1) * 13 + k] = '\0'; break; }
                         if (ch == 0xFFFF) break;                     // Padding
-                        lname[(ord - 1) * 13 + k] = (ch < 0x80) ? (char)ch : '?';
+                        // UCS-2 below 0x100 is Latin-1, KaOS's own charset
+                        lname[(ord - 1) * 13 + k] = (ch < 0x100) ? (char)ch : '?';
                     }
                     cur.lfn[cur.lfn_n].lba = lba;
                     cur.lfn[cur.lfn_n].idx = i;
@@ -497,17 +498,18 @@ static int valid_83(const char* name) {
     return base >= 1 && base <= 8 && ext != 0 && ext <= 3;
 }
 
-// 1 if `name` is acceptable as a long name (ASCII; FAT's forbidden
-// characters excluded; no trailing dot or space, which Windows strips).
+// 1 if `name` is acceptable as a long name (Latin-1, stored as the same
+// Unicode code points; FAT's forbidden characters excluded; no trailing
+// dot or space, which Windows strips).
 static int valid_long(const char* name) {
     int len = strlen((char*)name);
     if (len == 0 || len >= FAT_NAME_MAX) return 0;
     if (strcmp((char*)name, ".") == 0 || strcmp((char*)name, "..") == 0) return 0;
     for (int i = 0; i < len; i++) {
         char c = name[i];
-        if (c < ' ' || c == '"' || c == '*' || c == '/' || c == ':' ||
+        if ((uint8_t)c < ' ' || c == '"' || c == '*' || c == '/' || c == ':' ||
             c == '<' || c == '>' || c == '?' || c == '\\' || c == '|' ||
-            (uint8_t)c > 126) return 0;
+            ((uint8_t)c >= 0x7F && (uint8_t)c < 0xA0)) return 0;
     }
     return name[len - 1] != '.' && name[len - 1] != ' ';
 }

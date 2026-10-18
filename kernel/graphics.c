@@ -1,5 +1,5 @@
 #include "graphics.h"
-#include "font.h"
+#include "latin1.h"
 #include "memory.h"
 #include "util.h"
 
@@ -138,8 +138,7 @@ void draw_rect(int x, int y, int w, int h, uint32_t color) {
 }
 
 void draw_char(int x, int y, char c, uint32_t color) {
-    if ((uint8_t)c < 32 || (uint8_t)c > 126) c = '?'; // Non-printable
-    const uint8_t* glyph = font_bitmap[(uint8_t)c];
+    const uint8_t* glyph = latin1_glyph((uint8_t)c);   // ASCII + Latin-1
 
     for (int i = 0; i < 8; i++)
         for (int j = 0; j < 8; j++)
@@ -159,9 +158,7 @@ void draw_string(int x, int y, const char* str, uint32_t color) {
 // Same 8x8 font, each pixel drawn as a scale x scale block (big text)
 void draw_string_scaled(int x, int y, const char* str, uint32_t color, int scale) {
     for (; *str; str++, x += 8 * scale) {
-        char c = *str;
-        if ((uint8_t)c < 32 || (uint8_t)c > 126) c = '?';
-        const uint8_t* glyph = font_bitmap[(uint8_t)c];
+        const uint8_t* glyph = latin1_glyph((uint8_t)*str);
         for (int i = 0; i < 8; i++)
             for (int j = 0; j < 8; j++)
                 if (glyph[i] & (1 << (7 - j)))

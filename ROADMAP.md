@@ -142,7 +142,9 @@ From bare metal to a full operating system.
 ---
 
 ## 🔧 Transversal (cuando toque)
-- [ ] Layout de teclado ES (hoy: US; la ñ espera su momento).
+- [x] Layout de teclado ES: `keymap es` (ñ, ç, ¿¡, AltGr, teclas
+      muertas para tildes); texto en Latin-1 con glifos compuestos y
+      nombres largos FAT32 en Unicode.
 - [ ] `panic()` con volcado de registros legible en vez de colgarse.
 - [x] Liberar la memoria de los `fs_node_t` creados por `finddir`
       (`vfs_release`).

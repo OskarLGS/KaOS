@@ -28,7 +28,7 @@ Outputs:
 
 The script fails if the kernel outgrows its slot (`KERNEL_SECTORS` at the
 top of build.sh, 512 sectors = 256KB).
-Current size is printed on every build (~35KB used).
+Current size is printed on every build (~107KB used).
 
 ## Run in QEMU
 
@@ -73,8 +73,8 @@ milestone letters interleaved.
 
 ## Automated tests
 
-`./test.sh` builds and runs `tests/kaos_test.py`: five QEMU sessions
-(desktop, files, programs, users, network), each on a throw-away copy
+`./test.sh` builds and runs `tests/kaos_test.py`: six QEMU sessions
+(desktop, files, programs, users, network, ES keyboard), each on a throw-away copy
 of `build/fat32.img` (your disk is never touched), driven through the
 QEMU monitor and checked against the console transcript, plus host-side
 checks (mtools, `cmp`, `fsck.fat`). It starts its own HTTP servers for
@@ -155,6 +155,9 @@ FAT32 writes can be verified from the host without booting:
   with `vfs_release()` — FAT32 hands out heap nodes.
 - User programs: any inline `int 0x80` must clobber `"memory"` (see
   `user/syscall.h`), or GCC drops stores to buffers the kernel reads.
+- Text is **Latin-1** (one byte per char; ñ = 0xF1). Compare/fold case
+  with `latin1_lower`, draw with `latin1_glyph`; chars ≥ 0x80 are
+  negative as `char`, so cast to `uint8_t` before range checks.
 - `term_grid` rows have a stride of `MAX_TERM_COLS`, not `term_cols`:
   clear/scroll it row by row or by `sizeof`, never as a flat
   `term_rows * term_cols` block.

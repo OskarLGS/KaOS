@@ -64,8 +64,9 @@ valid LFN run precedes it, else the 8.3 display name.
 entry, last part first (order number | 0x40), 13 UCS-2 characters each,
 plus a checksum of the 8.3 name. `dir_walk` accepts a run only if the
 order numbers count down to 1 without gaps and every checksum matches
-the short entry, so stale fragments are ignored. Characters outside
-ASCII show as `?`. Names are up to 127 characters.
+the short entry, so stale fragments are ignored. Names are Latin-1
+(UCS-2 below 0x100; anything above shows as `?`), up to 127 characters,
+compared case-insensitively including accented capitals.
 
 | Operation | What it does |
 |-----------|--------------|

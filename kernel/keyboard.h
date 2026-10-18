@@ -16,4 +16,11 @@ char keyboard_get_char(); // Non-blocking character read
 #define KEY_PGUP   0x15
 #define KEY_PGDN   0x16
 
+// Keyboard layouts. Text is Latin-1 (see latin1.h): the ES layout
+// produces ñ, ç, accented vowels (dead keys ´ ` ^ ¨) and AltGr symbols.
+#define KEYMAP_US 0
+#define KEYMAP_ES 1
+void keyboard_set_layout(int layout);
+int  keyboard_layout();
+
 #endif

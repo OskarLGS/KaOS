@@ -2,6 +2,7 @@
 #include "ports.h"
 #include "graphics.h"
 #include "util.h"
+#include "latin1.h"
 
 int cursor_x = 0;
 int cursor_y = 0;
@@ -104,7 +105,7 @@ void print_char(char character, char attribute) {
         } else {
             char* video_memory = (char*) VIDEO_ADDRESS;
             int offset = (cursor_y * max_cols + cursor_x) * 2;
-            video_memory[offset] = character;
+            video_memory[offset] = latin1_to_cp437((uint8_t)character);
             video_memory[offset + 1] = attribute;
         }
         cursor_x++;

@@ -369,8 +369,11 @@ static void setup_password(char* pw) {
     shell_ask("Retype it: ", 1, setup_retype);
 }
 
+void keymap_load();
+
 void shell_begin() {
     int r = users_init();
+    if (r >= 0) keymap_load();      // Before the login prompt: type in your layout
     if (r < 0) {
         // No disk: nowhere to keep accounts
         shell_set_user("root", UID_ROOT);

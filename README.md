@@ -147,6 +147,7 @@ arp       ARP cache                      dhcp      Renew the address
 whoami    Current user                   users     List accounts
 su        Switch user                    passwd    Change password
 useradd   Add a user (root)              logout    End the session
+keymap    Keyboard layout (keymap es: ñ, tildes, ¿¡, AltGr)
 ```
 
 ## Documentation

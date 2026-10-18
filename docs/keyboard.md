@@ -52,6 +52,30 @@ We only process key presses and ignore releases.
 Extended releases and the fake-shift bytes some keys send are dropped.
 SYS_READ ignores these codes, so they never end up in a program's line.
 
+## Layouts: US and ES
+
+`keymap es` / `keymap us` switch layouts (root's choice is saved in
+`disk/etc/keymap` and loaded at boot, before the login prompt). The ES
+layout maps the same scan codes to Spanish symbols, in **Latin-1**:
+
+| Feature | Details |
+|---------|---------|
+| Letters | ñ Ñ ç Ç on their own keys |
+| Symbols | ¡ ¿ º ª · and `' + - < >` in their Spanish places |
+| AltGr (right Alt, `E0 38`) | `\| @ # ~ ¬ [ ] { } \\` |
+| Dead keys | `´` `` ` `` `^` `¨`: the next vowel gets the accent (á à â ä); space gives the accent itself; any other key gives accent + key |
+
+## Text encoding (kernel/latin1.c)
+
+Text is one byte per character, Latin-1 (ISO-8859-1). The graphical
+font is ASCII; `latin1_glyph()` builds the accented letters by drawing
+the accent over the base letter (lowercase: in the two empty top rows;
+capitals: moved down one row) plus hand-drawn ¡ ¿ º ª · ¬ ´ ¨. VGA text
+mode converts to the card's CP437 (`latin1_to_cp437`, unaccented letter
+when CP437 lacks one). FAT32 long names store Latin-1 as the same
+Unicode code points, so other systems see `año.txt` correctly; file
+*contents* stay Latin-1 bytes.
+
 ## Input Buffer
 
 Keys go into a 256-entry ring buffer (`volatile`: written by the IRQ,

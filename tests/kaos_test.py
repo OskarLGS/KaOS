@@ -56,10 +56,22 @@ class Kaos:
                 time.sleep(0.1)
         else:
             raise Fail("QEMU monitor did not come up")
-        time.sleep(0.5)                   # Boot menu
-        if mode == "text":
-            self.key("down"); self.key("down")
-        self.key("ret")
+        # Pick the boot-menu entry. Keys sent before KaBooM listens are
+        # lost and the menu then waits forever, so repeat until the kernel
+        # writes its first character to the debug port.
+        for attempt in range(6):
+            time.sleep(0.5)
+            if mode == "text":
+                self.key("down"); self.key("down")
+            self.key("ret")
+            end = time.time() + 3
+            while time.time() < end and not self.output():
+                time.sleep(0.1)
+            if self.output():
+                break
+        else:
+            self.close()
+            raise Fail("KaOS did not start (boot menu ignored the keys?)")
 
     def key(self, k, delay=0.05):
         self.mon.sendall(f"sendkey {k}\n".encode())
@@ -181,12 +193,16 @@ def session(ctx, name, net=True):
     """A text-mode KaOS with a fresh disk, logged in as root."""
     disk = ctx.fresh_disk(name)
     k = Kaos(ctx.tmp, disk, net=net)
-    k.expect("Choose a password for root: ", 15)
-    k.line(ROOT_PW); k.expect("Retype it: ")
-    k.line(ROOT_PW); k.expect("KaOS login: ")
-    k.line("root"); k.expect("Password: ")
-    k.line(ROOT_PW); k.expect("Welcome, root.")
-    k.expect("root# ")
+    try:
+        k.expect("Choose a password for root: ", 15)
+        k.line(ROOT_PW); k.expect("Retype it: ")
+        k.line(ROOT_PW); k.expect("KaOS login: ")
+        k.line("root"); k.expect("Password: ")
+        k.line(ROOT_PW); k.expect("Welcome, root.")
+        k.expect("root# ")
+    except Exception:
+        k.close()               # Don't leave QEMU holding the disk
+        raise
     return k, disk
 
 
@@ -290,7 +306,44 @@ def test_network(ctx):
         raise Fail("fsck.fat found problems:\n" + report)
 
 
-TESTS = [test_gui_boot, test_shell_and_files, test_programs, test_users, test_network]
+def test_keymap_es(ctx):
+    """Spanish layout: physical keys (as QEMU sends them) -> Latin-1 text."""
+    k, disk = session(ctx, "keymap", net=False)
+
+    def keys(*names):
+        for n in names:
+            k.key(n, 0.08)
+
+    def word(w):            # Plain letters type the same in both layouts
+        keys(*["spc" if c == " " else c for c in w])
+
+    try:
+        k.run("keymap es", "Layout es (saved).")
+        # echo año más ¿qué? @ > disk/tmp/año.txt
+        word("echo a"); keys("semicolon"); word("o m")              # ñ
+        keys("apostrophe"); word("as ")                             # dead ´ + a = á
+        keys("shift-equal"); word("qu"); keys("apostrophe"); word("e")  # ¿ ... é
+        keys("shift-minus", "spc", "alt_r-2", "spc")                # ? and AltGr+2 = @
+        keys("shift-less", "spc"); word("disk"); keys("shift-7")    # > and /
+        word("tmp"); keys("shift-7"); word("a"); keys("semicolon"); word("o")
+        keys("dot"); word("txt"); keys("ret")
+        k.expect("Written to file.")
+        # cat disk/tmp/AÑO.TXT  (accent-aware case-insensitive lookup)
+        word("cat disk"); keys("shift-7"); word("tmp"); keys("shift-7")
+        keys("shift-a", "shift-semicolon", "shift-o", "dot", "shift-t", "shift-x", "shift-t", "ret")
+        k.expect("a\xf1o m\xe1s \xbfqu\xe9? @")
+        k.run("keymap us", "Layout us (saved).")
+    finally:
+        k.close()
+    if mtype(disk, "/tmp/a\u00f1o.txt").strip() != "año más ¿qué? @".encode("latin-1"):
+        raise Fail("año.txt not found from the host under its Unicode long name")
+    ok, report = fsck_ok(disk)
+    if not ok:
+        raise Fail("fsck.fat found problems:\n" + report)
+
+
+TESTS = [test_gui_boot, test_shell_and_files, test_programs, test_users, test_network,
+         test_keymap_es]
 
 
 class Ctx:
