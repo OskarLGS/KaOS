@@ -3,6 +3,7 @@
 #include "memory.h"
 #include "util.h"
 #include "screen.h"
+#include "rtc.h"
 
 static fat32_bpb_t bpb;
 static uint32_t fat_start_sector;
@@ -113,6 +114,11 @@ static void update_dir_entry(fs_node_t* node) {
     entry->file_size        = node->length;
     entry->first_cluster_lo = node->inode & 0xFFFF;
     entry->first_cluster_hi = (node->inode >> 16) & 0xFFFF;
+
+    rtc_time_t now;
+    rtc_read(&now);
+    entry->write_date = entry->last_access_date = rtc_fat_date(&now);
+    entry->write_time = rtc_fat_time(&now);
 
     ata_write_sector(lba, buffer);
 }
@@ -399,6 +405,12 @@ static void fill_entry(fat32_entry_t* e, const uint8_t name83[11],
     memory_set((uint8_t*)e, 0, sizeof(fat32_entry_t));
     for (int n = 0; n < 11; n++) e->name[n] = name83[n];
     e->attr = attr;
+
+    // Created/modified/accessed = now
+    rtc_time_t now;
+    rtc_read(&now);
+    e->creation_date = e->write_date = e->last_access_date = rtc_fat_date(&now);
+    e->creation_time = e->write_time = rtc_fat_time(&now);
     e->first_cluster_lo = first_cluster & 0xFFFF;
     e->first_cluster_hi = (first_cluster >> 16) & 0xFFFF;
 }

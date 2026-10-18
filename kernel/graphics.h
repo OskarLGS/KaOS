@@ -19,6 +19,7 @@ void clear_screen(uint32_t color);
 void draw_rect(int x, int y, int w, int h, uint32_t color);
 void draw_char(int x, int y, char c, uint32_t color);
 void draw_string(int x, int y, const char* str, uint32_t color);
+void draw_string_scaled(int x, int y, const char* str, uint32_t color, int scale);
 void graphics_scroll(int start_y, int scroll_amount);
 void swap_buffers();
 

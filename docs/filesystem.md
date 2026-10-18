@@ -73,8 +73,7 @@ layout, no partition table).
   recompute them.
 
 ### Not supported yet
-Long filenames (LFN), file timestamps (no RTC — new files
-show 1980). A write sets the file size to the end of that write (fine
+Long filenames (LFN). A write sets the file size to the end of that write (fine
 for sequential writes from offset 0; there is no append-in-the-middle).
 
 ## Shell usage

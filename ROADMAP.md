@@ -58,7 +58,8 @@ From bare metal to a full operating system.
 - [x] **Z-order real**: Traer al frente la ventana enfocada al hacer clic,
       restaurar desde taskbar o abrir desde el menú inicio.
 - [ ] **Redimensionar ventanas**: Arrastrando el borde inferior-derecho.
-- [ ] **App: Reloj** — uptime/hora con el RTC (ver Fase 7).
+- [x] **App: Reloj** — ventana Clock (hora grande + fecha) y hora en la
+      barra de tareas, leídas del RTC.
 - [ ] **App: Visor de ficheros** — navegar el VFS con el ratón
       (estrena `readdir` gráfico y doble clic).
 - [ ] **Scroll-back en la terminal** y historial de comandos (flechas ↑/↓,
@@ -104,8 +105,8 @@ From bare metal to a full operating system.
 - [ ] **Nombres largos (LFN)**: Leer (y luego escribir) entradas UCS-2.
 - [x] **Rutas multinivel**: `vfs_resolve` recorre cualquier profundidad
       (`cat disk/docs/sub/leeme.txt`); lo usan la shell y `SYS_OPEN`.
-- [ ] **RTC (CMOS)**: Fecha/hora real para timestamps de ficheros y el
-      reloj de la Fase 5.
+- [x] **RTC (CMOS)**: Fecha/hora real (`date`), timestamps de creación y
+      modificación en FAT32 y reloj del escritorio.
 - [ ] **cp / mv** entre RAMFS y disco (`cp.elf` ya copia en espacio de
       usuario; faltan `mv` y comandos integrados).
 

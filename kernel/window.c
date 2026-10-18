@@ -2,6 +2,7 @@
 #include "graphics.h"
 #include "util.h"
 #include "mouse.h"
+#include "rtc.h"
 
 static window_t windows[MAX_WINDOWS];
 static int      win_count   = 0;
@@ -168,6 +169,14 @@ void wm_draw_desktop() {
 
         bx += TASK_BTN_W + TASK_BTN_GAP;
     }
+
+    // Clock at the right end of the taskbar
+    rtc_time_t now;
+    rtc_read(&now);
+    char hm[9];
+    rtc_format_time(&now, hm);
+    hm[5] = '\0';                       // HH:MM
+    draw_string(800 - 8 * 5 - 12, TASKBAR_Y + 10, hm, 0xFFFFFF);
 }
 
 static void draw_start_menu() {

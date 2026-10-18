@@ -2,6 +2,7 @@
 #include "../screen.h"
 #include "../util.h"
 #include "../graphics.h"
+#include "../rtc.h"
 
 static void cmd_clear(char* args) {
     (void)args;
@@ -26,6 +27,22 @@ static void cmd_version(char* args) {
     print_string("KaOS (Kernel)          v1.0.0\n");
 }
 
+static void cmd_date(char* args) {
+    (void)args;
+    rtc_time_t t;
+    rtc_read(&t);
+
+    // "Sun 2026-10-18 09:05:07\n" composed first: one atomic print
+    char line[32];
+    strcpy(line, (char*)rtc_weekday_name(&t));
+    append(line, ' ');
+    rtc_format_date(&t, line + strlen(line));
+    append(line, ' ');
+    rtc_format_time(&t, line + strlen(line));
+    append(line, '\n');
+    print_string(line);
+}
+
 static void cmd_halt(char* args) {
     (void)args;
     print_string("Halting system. Goodbye!\n");
@@ -37,4 +54,5 @@ void init_cmd_sys() {
     register_command("info", "Display OS info", cmd_info);
     register_command("version", "Show version numbers", cmd_version);
     register_command("halt", "Halt the system", cmd_halt);
+    register_command("date", "Show the date and time (RTC)", cmd_date);
 }

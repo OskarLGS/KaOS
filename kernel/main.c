@@ -13,6 +13,7 @@
 #include "mouse.h"
 #include "window.h"
 #include "terminal.h"
+#include "rtc.h"
 
 static char key_line_buffer[256];
 
@@ -51,6 +52,23 @@ static void about_paint(window_t* self) {
     draw_string(cx, cy + 88, line, 0x6FBF6F);
 }
 
+static void clock_paint(window_t* self) {
+    int cx = self->x + 14;
+    int cy = self->y + TITLEBAR_H + 14;
+
+    rtc_time_t now;
+    rtc_read(&now);
+    char buf[16];
+
+    rtc_format_time(&now, buf);
+    draw_string_scaled(cx, cy, buf, 0xFFFFFF, 3);    // 8 chars x 24 px
+
+    strcpy(buf, (char*)rtc_weekday_name(&now));
+    append(buf, ' ');
+    rtc_format_date(&now, buf + strlen(buf));
+    draw_string(cx, cy + 36, buf, 0x9A9A9A);
+}
+
 static void run_desktop() {
     dbg('D'); // entering desktop loop
     wm_init();
@@ -60,6 +78,8 @@ static void run_desktop() {
     terminal_init(term);
     window_t* about = wm_create(300, 200, 280, 160, "About KaOS");
     if (about) about->on_paint = about_paint;
+    window_t* clock = wm_create(560, 40, 220, 90, "Clock");
+    if (clock) clock->on_paint = clock_paint;
     dbg('W'); // windows created
 
     static uint8_t prev_buttons = 0;

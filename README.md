@@ -77,7 +77,8 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **Paging** — kernel pages supervisor-only, dedicated user region.
 - **Interrupts (IDT)** — exceptions, PIC remap, hardware IRQs, syscalls.
 - **Drivers** — VGA text, VBE graphics, PS/2 keyboard (with Shift),
-  PS/2 mouse, PIT timer, ATA PIO disk (read **and write**).
+  PS/2 mouse, PIT timer, CMOS real-time clock, ATA PIO disk (read
+  **and write**).
 - **Multitasking** — preemptive scheduler (timer-driven) with `ps`, `kill`.
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.
@@ -101,6 +102,7 @@ version   Show version numbers           echo      Write file (echo hi > disk/no
 clear     Clear the screen               malloc    Allocate memory (demo)
 halt      Halt the CPU                   free      Free memory (free 0xADDR)
 uptime    Show system uptime             paging    Show paging info
+date      Show date and time (RTC)
 ps        List running tasks             kill      Stop a task by PID
 exec      Run an ELF program in Ring 3 (exec disk/args.elf hola mundo)
 touch     Create an empty file            rm        Delete a file / empty dir
