@@ -96,7 +96,13 @@ isr_common_stub:
     mov fs, ax
     mov gs, ax
     
+    ; Pass a POINTER to the saved frame. Passing the struct by value made
+    ; the frame itself the C function's argument area, which GCC may reuse
+    ; as scratch (e.g. for a tail call's arguments) — corrupting the
+    ; registers restored below.
+    push esp
     call isr_handler
+    add esp, 4
     
     pop eax
     mov ds, ax
@@ -117,7 +123,9 @@ irq_common_stub:
     mov fs, ax
     mov gs, ax
     
+    push esp            ; Pointer to the frame (see isr_common_stub)
     call irq_handler
+    add esp, 4
     
     pop eax
     mov ds, ax

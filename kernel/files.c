@@ -4,6 +4,8 @@
 #include "timer.h"
 #include "util.h"
 #include "vfs.h"
+#include "task.h"
+#include "users.h"
 
 #define MAX_ENTRIES   64
 #define NAME_MAX      128   // FAT32 long names are up to 127 chars
@@ -95,6 +97,15 @@ static void go_up() {
 }
 
 static void open_file(const char* path) {
+    if (!perm_read(current_uid(), path)) {
+        strcpy(view_buf, "Permission denied.");
+        view_len = strlen(view_buf);
+        view_size = 0;
+        strcpy(view_name, (char*)path);
+        view_top = 0;
+        viewing = 1;
+        return;
+    }
     fs_node_t* f = vfs_resolve(path);
     if (!f) return;
     view_size = f->length;

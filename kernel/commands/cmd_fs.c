@@ -2,8 +2,23 @@
 #include "../vfs.h"
 #include "../util.h"
 #include "../screen.h"
+#include "../task.h"
+#include "../users.h"
 
 #define BAD_NAME_MSG "Invalid name (up to 127 chars, none of \\ / : * ? \" < > |).\n"
+
+// Permission gates: print the refusal and return 0 if not allowed
+static int may_read(const char* path) {
+    if (perm_read(current_uid(), path)) return 1;
+    print_string("Permission denied.\n");
+    return 0;
+}
+
+static int may_write(const char* path) {
+    if (perm_write(current_uid(), path)) return 1;
+    print_string("Permission denied (you can write in your home and disk/tmp).\n");
+    return 0;
+}
 
 static char* skip_spaces(char* s) {
     while (*s == ' ') s++;
@@ -39,6 +54,7 @@ static void cmd_ls(char* args) {
 
 static void cmd_cat(char* args) {
     char *path = skip_spaces(args);
+    if (!may_read(path)) return;
     fs_node_t *node = vfs_resolve(path);
 
     if (!node || (node->flags & 0x7) != FS_FILE) {
@@ -64,6 +80,7 @@ static void cmd_cat(char* args) {
 static void cmd_touch(char* args) {
     args = skip_spaces(args);
     if (*args == '\0') { print_string("Usage: touch <path>\n"); return; }
+    if (!may_write(args)) return;
 
     char name[VFS_PATH_MAX];
     fs_node_t* dir = vfs_resolve_parent(args, name);
@@ -78,6 +95,7 @@ static void cmd_touch(char* args) {
 static void cmd_rm(char* args) {
     args = skip_spaces(args);
     if (*args == '\0') { print_string("Usage: rm <path>\n"); return; }
+    if (!may_write(args)) return;
 
     char name[VFS_PATH_MAX];
     fs_node_t* dir = vfs_resolve_parent(args, name);
@@ -92,6 +110,7 @@ static void cmd_rm(char* args) {
 static void cmd_mkdir(char* args) {
     args = skip_spaces(args);
     if (*args == '\0') { print_string("Usage: mkdir <path>\n"); return; }
+    if (!may_write(args)) return;
 
     char name[VFS_PATH_MAX];
     fs_node_t* dir = vfs_resolve_parent(args, name);
@@ -121,6 +140,7 @@ static void cmd_echo(char* args) {
     cmd[gt_idx - 1] = '\0'; // End text before space
     char *text = cmd;
     char *filename = skip_spaces(cmd + gt_idx + 1);
+    if (!may_write(filename)) return;
 
     fs_node_t *fsnode = vfs_resolve(filename);
 
@@ -192,6 +212,19 @@ static int copy_file(fs_node_t* src, fs_node_t* dst_dir, char* dst_name) {
     return (int)off;
 }
 
+// The path cp/mv would write: `dst`, or `dst/<name of src>` when `dst`
+// is an existing directory (what resolve_target does).
+static void target_path(char* src, char* dst, char* out) {
+    strcpy(out, dst);
+    fs_node_t* d = vfs_resolve(dst);
+    if (d && (d->flags & 0x7) == FS_DIRECTORY &&
+        strlen(dst) + strlen(base_name(src)) + 2 < VFS_PATH_MAX) {
+        append(out, '/');
+        strcpy(out + strlen(out), base_name(src));
+    }
+    vfs_release(d);
+}
+
 // Split "a b" into two words; returns 0 unless exactly two are given.
 static int two_args(char* args, char** a, char** b) {
     *a = skip_spaces(args);
@@ -220,6 +253,9 @@ static void cmd_cp(char* args) {
         print_string("Usage: cp <from> <to>   (to may be a directory)\n");
         return;
     }
+    char dst_full[VFS_PATH_MAX];
+    target_path(src_path, dst_path, dst_full);
+    if (!may_read(src_path) || !may_write(dst_full)) return;
     fs_node_t* src = vfs_resolve(src_path);
     if (!src || (src->flags & 0x7) != FS_FILE) {
         print_string("Source file not found (cp copies files).\n");
@@ -246,6 +282,9 @@ static void cmd_mv(char* args) {
         print_string("Usage: mv <from> <to>   (to may be a directory)\n");
         return;
     }
+    char dst_full[VFS_PATH_MAX];
+    target_path(src_path, dst_path, dst_full);
+    if (!may_write(src_path) || !may_write(dst_full)) return;
     char src_name[VFS_PATH_MAX];
     fs_node_t* src_dir = vfs_resolve_parent(src_path, src_name);
     fs_node_t* src = src_dir ? finddir_fs(src_dir, src_name) : 0;

@@ -49,8 +49,12 @@ hard disk with the user programs — your files on it persist).
 ```bash
 # The floppy attachment matters: the loader uses floppy CHS geometry
 qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
-                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a
+                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a \
+                 -netdev user,id=n0 -device rtl8139,netdev=n0
 ```
+The two `-netdev`/`-device` options give KaOS an RTL8139 network card on
+QEMU's user-mode network (10.0.2.0/24, gateway 10.0.2.2). Without them
+KaOS still boots; networking is just unavailable.
 On Windows, use native QEMU (`winget install SoftwareFreedomConservancy.QEMU`)
 rather than QEMU inside WSLg — mouse capture only works natively.
 Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
@@ -60,6 +64,14 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 2. Add a Floppy Controller and attach `kaos.img`.
 3. Optionally attach `build/fat32.img` as a hard disk.
 4. Boot order: floppy first.
+
+## First boot and login
+
+With a fresh `build/fat32.img` KaOS asks for a **root password** (twice)
+and creates `disk/etc`, `disk/home` and `disk/tmp`. After that every
+session starts at `KaOS login:`. Add users as root with `useradd <name>`;
+each user can write only in `disk/home/<name>` and `disk/tmp`.
+See [docs/users.md](docs/users.md).
 
 ## Boot Menu (KaBooM)
 
@@ -79,7 +91,9 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **Interrupts (IDT)** — exceptions, PIC remap, hardware IRQs, syscalls.
 - **Drivers** — VGA text, VBE graphics, PS/2 keyboard (with Shift),
   PS/2 mouse, PIT timer, CMOS real-time clock, ATA PIO disk (read
-  **and write**).
+  **and write**), PCI, RTL8139 network card.
+- **Networking** — ARP, IPv4, ICMP, UDP, TCP; DHCP at boot, DNS;
+  `ping`, `host`, `fetch` (HTTP).
 - **Multitasking** — preemptive scheduler (timer-driven) with `ps`, `kill`.
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.
@@ -97,6 +111,8 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
   windows, and a full **graphical terminal** running the shell (with
   scroll-back on PgUp/PgDn).
 - **Shell** — command history with ↑/↓ in text mode and on the desktop.
+- **Users** — login, salted SHA-256 passwords, `su`, `passwd`,
+  `useradd`, per-process uid and path-based permissions.
 
 ## Shell Commands
 
@@ -114,6 +130,12 @@ touch     Create an empty file            rm        Delete a file / empty dir
 mkdir     Create a directory (mkdir disk/docs/sub)
 cp        Copy a file                    mv        Move / rename
 spin      Preemption demo (CPU-bound task)
+ifconfig  Network settings               ping      Ping a host
+host      DNS lookup                     fetch     HTTP GET (fetch 10.0.2.2:8080/f.txt)
+arp       ARP cache                      dhcp      Renew the address
+whoami    Current user                   users     List accounts
+su        Switch user                    passwd    Change password
+useradd   Add a user (root)              logout    End the session
 ```
 
 ## Documentation

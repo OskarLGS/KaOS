@@ -5,6 +5,7 @@
 #include "../util.h"
 #include "../screen.h"
 #include "../paging.h"
+#include "../users.h"
 
 // Demo of preemptive multitasking: a CPU-bound task that NEVER yields.
 // volatile so the spin loop's increments are real memory writes the shell
@@ -102,6 +103,10 @@ static void cmd_exec(char* args) {
     }
     if (argc == 0) {
         print_string("Usage: exec <path> [args...] [&]\n");
+        return;
+    }
+    if (!perm_read(current_uid(), argv[0])) {
+        print_string("Permission denied.\n");
         return;
     }
     fs_node_t *file = vfs_resolve(argv[0]);

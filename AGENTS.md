@@ -37,13 +37,14 @@ floppy boot first.
 
 Windows (native QEMU, installed at `C:\Program Files\qemu`):
 ```powershell
-& "C:\Program Files\qemu\qemu-system-i386.exe" -drive format=raw,file=kaos.img,if=floppy -drive format=raw,file=build\fat32.img,if=ide -boot order=a
+& "C:\Program Files\qemu\qemu-system-i386.exe" -drive format=raw,file=kaos.img,if=floppy -drive format=raw,file=build\fat32.img,if=ide -boot order=a -netdev user,id=n0 -device rtl8139,netdev=n0
 ```
 
 WSL/Linux:
 ```bash
 qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
-                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a
+                 -drive format=raw,file=build/fat32.img,if=ide -boot order=a \
+                 -netdev user,id=n0 -device rtl8139,netdev=n0
 ```
 
 Prefer **native Windows QEMU** for interactive use: mouse capture
@@ -71,6 +72,7 @@ Scripted end-to-end test pattern (boot, type, screenshot — all headless):
 ```bash
 qemu-system-i386 -drive format=raw,file=kaos.img,if=floppy \
   -drive format=raw,file=build/fat32.img,if=ide -boot order=a \
+  -netdev user,id=n0 -device rtl8139,netdev=n0 \
   -display none -debugcon file:build/debug.log \
   -monitor telnet:127.0.0.1:4555,server,nowait &
 sleep 2
@@ -113,6 +115,10 @@ FAT32 writes can be verified from the host without booting:
   mouse x/y/buttons, timer tick). Under `-O2` the optimizer caches
   non-volatile globals in registers in the polling loops and never sees
   the interrupt's updates.
+- **Interrupt handlers get `struct registers*`, never the struct by
+  value.** By value, the saved frame *is* the C argument area and GCC
+  may reuse it (a tail call once wrote a pid over the saved DS → panic
+  after Ctrl+C). The stubs `push esp`.
 - **Inline asm must declare every clobber.** The old PIC remap wrote `al`
   without listing it as clobbered; `-O2` then miscompiled it and left the
   keyboard IRQ masked. Prefer the `port_byte_out` helpers over hand-rolled
@@ -142,6 +148,19 @@ FAT32 writes can be verified from the host without booting:
   disk attached the status port reads 0xFF with BSY set forever.
 - Design docs for completed features live in `docs/superpowers/specs/`.
   Subsystem documentation lives in `docs/` (English, concise, tables).
+
+Network tests: QEMU's 10.0.2.2 is the host's loopback, so run
+`python3 -m http.server 8080 --bind 127.0.0.1` on the host and
+`fetch 10.0.2.2:8080/<file> > disk/x` in KaOS, then compare with
+`mtype -i build/fat32.img ::/x | cmp - <file>`. `ping 10.0.2.2` must
+answer. Don't stop test servers with `pkill -f <pattern>` from a shell
+whose own command line contains the pattern — it kills that shell.
+
+Accounts: a fresh `build/fat32.img` boots into first-boot setup (type
+the root password twice), later boots into `KaOS login:`. Scripted tests
+must log in first (type the user name + `ret`, then the password +
+`ret`). To start over without accounts: `mdel -i build/fat32.img
+::/etc/passwd`.
 
 ## Quick smoke test before calling work done
 

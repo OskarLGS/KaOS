@@ -14,6 +14,8 @@ Each document covers a specific subsystem of the OS. They are meant to be read i
 | [memory.md](memory.md) | KMalloc (heap), paging (virtual memory) |
 | [shell.md](shell.md) | Command interpreter, buffer management |
 | [ata.md](ata.md) | ATA PIO disk driver, sector read/write |
+| [users.md](users.md) | Accounts, login, SHA-256 passwords, path-based permissions |
+| [network.md](network.md) | RTL8139, ARP/IPv4/ICMP/UDP/TCP, DHCP, DNS, ping/fetch |
 | [rtc.md](rtc.md) | CMOS real-time clock, `date`, file timestamps, Clock app |
 | [multitasking.md](multitasking.md) | Task switching, scheduler, context switch |
 | [filesystem.md](filesystem.md) | VFS, RAMFS, FAT32 read/write |

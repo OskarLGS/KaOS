@@ -34,6 +34,7 @@ void tasking_init() {
     copy_name(tasks[0].name, "shell");
     tasks[0].id = next_pid++;
     tasks[0].state = TASK_RUNNING;
+    tasks[0].uid = 65535;            // Nobody, until someone logs in
     tasks[0].esp = 0; 
     task_count = 1;
     current_task = 0;
@@ -76,11 +77,17 @@ int create_task(const char* name, void (*entry)()) {
     t->exit_code = 0;
     t->exit_kind = EXIT_NORMAL;
     t->keep_status = 0;
+    t->uid = tasks[current_task].uid; // Children run as their creator
     t->wake_tick = 0;
     t->user_brk = 0;
     t->heap_base = 0;
     t->page_dir = 0;
     memory_set((uint8_t*)t->files, 0, sizeof(t->files));
+
+    // Canary at the bottom of the kernel stack: schedule() checks it, so
+    // an overflow (which would silently corrupt this task_t's fields,
+    // just below the stack) is caught and named.
+    *(uint32_t*)t->stack = STACK_CANARY;
 
     uint32_t* stack_top = (uint32_t*)(t->stack + TASK_STACK_SIZE);
 
@@ -143,6 +150,13 @@ void schedule() {
     int prev = current_task;
     int next = (current_task + 1) % task_count;
 
+    if (prev > 0 && *(uint32_t*)tasks[prev].stack != STACK_CANARY) {
+        print_string("\nKERNEL PANIC: kernel stack overflow in task '");
+        print_string(tasks[prev].name);
+        print_string("'\n");
+        while (1) __asm__ __volatile__("hlt");
+    }
+
     // A sleeping task is READY but skipped until its wake tick. The shell
     // (task 0) never sleeps, so there is always something to run.
     uint32_t now = get_tick();
@@ -191,6 +205,14 @@ task_t* get_task(int index) {
     return &tasks[index];
 }
 
+uint32_t current_uid() {
+    return tasks[current_task].uid;
+}
+
+void task_set_uid(uint32_t uid) {
+    tasks[current_task].uid = uid;
+}
+
 task_t* current_task_ptr() {
     return (current_task >= 0) ? &tasks[current_task] : 0;
 }
@@ -228,6 +250,12 @@ int task_status(int pid, int* code, exit_kind_t* kind) {
         return 1;
     }
     return -1;
+}
+
+int task_alive(int pid) {
+    for (int i = 0; i < task_count; i++)
+        if ((int)tasks[i].id == pid) return tasks[i].state != TASK_STOPPED;
+    return 0;
 }
 
 void task_keep_status(int pid) {
