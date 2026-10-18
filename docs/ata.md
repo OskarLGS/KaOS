@@ -39,7 +39,10 @@ The ATA driver allows KaOS to read sectors directly from the hard disk using **P
 2. Send WRITE command (`0x30`).
 3. Wait for DRQ, then write 256 words to port `0x1F0`.
 4. Wait for BSY to clear, check ERR.
-5. Send CACHE FLUSH (`0xE7`) so the data reaches the medium.
+
+`ata_flush()` sends CACHE FLUSH (`0xE7`) so data reaches the medium.
+FAT32 calls it **once at the end of each operation** (write, create,
+mkdir, delete, rename), not after every sector.
 
 ## Timeouts (important)
 
@@ -48,6 +51,13 @@ With **no drive attached**, the bus floats and the status port reads
 timeout and an explicit `0xFF` check; `ata_identify()` is called first
 so FAT32 can bail out cleanly on disk-less systems. Without this the
 kernel hangs at boot.
+
+The limit itself is generous (50 M status reads): a missing drive is
+caught by the `0xFF` check at once, while a *slow* one — QEMU keeps BSY
+set while the host does the I/O — must not be reported as failed. A
+short limit once made FAT reads "fail" mid-write; FAT32 took the error
+code for a cluster number and overwrote the FAT. Limits are counted in
+status reads, not timer ticks, because syscalls run with interrupts off.
 
 ## What's on the ATA disk
 

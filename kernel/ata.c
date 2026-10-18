@@ -26,15 +26,26 @@
 
 // With no drive attached the bus floats and the status port reads 0xFF
 // (BSY set forever), so every wait must have a timeout and a 0xFF check.
-#define ATA_TIMEOUT 100000
+// Counted in status reads, not ticks: syscalls run with interrupts off,
+// so the timer doesn't advance during a disk operation.
+// A missing drive shows up at once as 0xFF, so the limit only matters for
+// a slow one: QEMU may keep BSY set while the host does the I/O (seconds
+// under load). A short limit made reads "fail" mid-operation, and FAT32
+// then used the error code as a cluster number.
+#define ATA_TIMEOUT       50000000
+#define ATA_FLUSH_TIMEOUT 50000000
 
-static int ata_wait_bsy() {
-    for (int i = 0; i < ATA_TIMEOUT; i++) {
+static int wait_not_busy(int limit) {
+    for (int i = 0; i < limit; i++) {
         uint8_t status = port_byte_in(ATA_STATUS);
         if (status == 0xFF) return -1; // Floating bus: no drive
         if (!(status & ATA_SR_BSY)) return 0;
     }
     return -1;
+}
+
+static int ata_wait_bsy() {
+    return wait_not_busy(ATA_TIMEOUT);
 }
 
 static int ata_wait_drq() {
@@ -63,14 +74,19 @@ int ata_write_sector(uint32_t lba, const uint8_t* buffer) {
         port_word_out(ATA_DATA, buf16[i]);
     }
 
-    if (ata_wait_bsy() != 0) return -1;
+    if (wait_not_busy(ATA_FLUSH_TIMEOUT) != 0) return -1;
     if (port_byte_in(ATA_STATUS) & ATA_SR_ERR) return -1;
-
-    // Flush the drive's write cache so data actually hits the medium
-    port_byte_out(ATA_COMMAND, ATA_CMD_FLUSH);
-    if (ata_wait_bsy() != 0) return -1;
-
     return 0;
+}
+
+// Flush the drive's write cache so data actually hits the medium. The
+// filesystem calls it once per operation, not once per sector.
+int ata_flush() {
+    if (ata_wait_bsy() != 0) return -1;
+    port_byte_out(ATA_DRIVE_HEAD, 0xE0);
+    port_byte_out(ATA_COMMAND, ATA_CMD_FLUSH);
+    if (wait_not_busy(ATA_FLUSH_TIMEOUT) != 0) return -1;
+    return (port_byte_in(ATA_STATUS) & ATA_SR_ERR) ? -1 : 0;
 }
 
 int ata_identify() {

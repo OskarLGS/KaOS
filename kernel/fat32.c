@@ -11,16 +11,26 @@ static uint32_t fat_start_sector;
 static uint32_t data_start_sector;
 static uint32_t sectors_per_cluster;
 static uint32_t root_dir_cluster;
+static uint32_t max_cluster;          // Highest valid data cluster number
 
 // VFS node for the FAT32 root
 static fs_node_t *fat32_root_node = 0;
 
 // Forward declarations (finddir wires these onto directory nodes)
+static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer);
 static int fat32_create(fs_node_t* dir, char* name);
 static int fat32_delete(fs_node_t* dir, char* name);
 static int fat32_mkdir(fs_node_t* dir, char* name);
 static int fat32_rename(fs_node_t* src_dir, char* src_name,
                         fs_node_t* dst_dir, char* dst_name);
+
+// A cluster number that really addresses the data area. Anything else
+// (0/1, end-of-chain marks, the "bad cluster" code get_next_cluster
+// returns on a read error) must never be turned into an LBA or written
+// into the FAT: that is how a failed read once overwrote the FAT itself.
+static int valid_cluster(uint32_t c) {
+    return c >= 2 && c <= max_cluster;
+}
 
 static uint32_t cluster_to_lba(uint32_t cluster) {
     return data_start_sector + ((cluster - 2) * sectors_per_cluster);
@@ -41,6 +51,7 @@ static uint32_t get_next_cluster(uint32_t cluster) {
 // Write a FAT entry (read-modify-write), mirrored to the second FAT copy.
 // The top 4 bits of FAT32 entries are reserved and must be preserved.
 static int set_fat_entry(uint32_t cluster, uint32_t value) {
+    if (!valid_cluster(cluster)) return -1;
     uint32_t fat_offset = cluster * 4;
     uint32_t fat_sector = fat_start_sector + (fat_offset / 512);
     uint32_t ent_offset = fat_offset % 512;
@@ -68,6 +79,7 @@ static uint32_t find_free_cluster() {
         for (int e = 0; e < 128; e++) {
             uint32_t cluster = s * 128 + e;
             if (cluster < 2) continue;
+            if (cluster > max_cluster) return 0;     // Past the data area
             if (((uint32_t*)buffer)[e] & 0x0FFFFFFF) continue;
             return cluster;
         }
@@ -77,7 +89,7 @@ static uint32_t find_free_cluster() {
 
 // Release every cluster from `cl` to the end of its chain.
 static void free_chain(uint32_t cl) {
-    while (cl >= 2 && cl < 0x0FFFFFF8) {
+    while (valid_cluster(cl)) {
         uint32_t next = get_next_cluster(cl);
         set_fat_entry(cl, 0);
         cl = next;
@@ -94,10 +106,10 @@ static void truncate_chain(uint32_t first, uint32_t length) {
     uint32_t cl = first;
     for (uint32_t i = 1; i < keep; i++) {
         cl = get_next_cluster(cl);
-        if (cl < 2 || cl >= 0x0FFFFFF8) return; // Chain already shorter
+        if (!valid_cluster(cl)) return;     // Chain already shorter (or unreadable)
     }
     uint32_t tail = get_next_cluster(cl);
-    if (tail < 2 || tail >= 0x0FFFFFF8) return; // Nothing past the end
+    if (!valid_cluster(tail)) return;       // Nothing past the end
     if (set_fat_entry(cl, 0x0FFFFFFF) != 0) return;
     free_chain(tail);
 }
@@ -126,7 +138,7 @@ static void update_dir_entry(fs_node_t* node) {
     ata_write_sector(lba, buffer);
 }
 
-static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer) {
+static uint32_t write_impl(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer) {
     if ((node->flags & 0x7) != FS_FILE) return 0;
     if (size == 0) return 0;
 
@@ -134,6 +146,7 @@ static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uin
 
     // Empty file: allocate its first cluster
     uint32_t cluster = node->inode;
+    if (cluster != 0 && !valid_cluster(cluster)) return 0;   // Corrupt entry
     if (cluster < 2) {
         cluster = find_free_cluster();
         if (!cluster) return 0;
@@ -145,6 +158,7 @@ static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uin
     uint32_t clusters_to_skip = offset / cluster_bytes;
     for (uint32_t i = 0; i < clusters_to_skip; i++) {
         uint32_t next = get_next_cluster(cluster);
+        if (!valid_cluster(next) && next < 0x0FFFFFF8) return 0;  // Broken/unreadable
         if (next >= 0x0FFFFFF8) {
             next = find_free_cluster();
             if (!next) return 0;
@@ -179,6 +193,7 @@ static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uin
         if (pos >= cluster_bytes) { // Crossed into the next cluster
             pos = 0;
             uint32_t next = get_next_cluster(cluster);
+            if (!valid_cluster(next) && next < 0x0FFFFFF8) break;  // Broken/unreadable
             if (next >= 0x0FFFFFF8) {
                 next = find_free_cluster();
                 if (!next) break;
@@ -211,15 +226,16 @@ static uint32_t fat32_read(fs_node_t *node, uint32_t offset, uint32_t size, uint
     
     // Skip to the correct offset cluster
     uint32_t clusters_to_skip = offset / (sectors_per_cluster * 512);
+    if (!valid_cluster(cluster)) return 0;
     for (uint32_t i = 0; i < clusters_to_skip; i++) {
         cluster = get_next_cluster(cluster);
-        if (cluster >= 0x0FFFFFF8) return 0;
+        if (!valid_cluster(cluster)) return 0;
     }
 
     uint32_t offset_in_cluster = offset % (sectors_per_cluster * 512);
     uint8_t cluster_buf[512]; // Note: simplified to 1 sector for now, should handle multi-sector clusters
 
-    while (bytes_read < size && cluster < 0x0FFFFFF8) {
+    while (bytes_read < size && valid_cluster(cluster)) {
         uint32_t lba = cluster_to_lba(cluster);
         for (uint32_t s = 0; s < sectors_per_cluster && bytes_read < size; s++) {
             if (ata_read_sector(lba + s, cluster_buf) != 0) return bytes_read;
@@ -308,7 +324,7 @@ static int dir_walk(uint32_t cluster, dvisit_t visit, void* ctx) {
     uint8_t lfn_sum = 0;
     cur.lfn_n = 0;
 
-    while (cluster >= 2 && cluster < 0x0FFFFFF8) {
+    while (valid_cluster(cluster)) {
         uint32_t lba0 = cluster_to_lba(cluster);
         for (uint32_t s = 0; s < sectors_per_cluster; s++) {
             uint32_t lba = lba0 + s;
@@ -637,7 +653,8 @@ static int find_free_run(uint32_t first, int n, epos_t* run) {
     uint32_t cluster = first, prev = first;
 
     while (1) {
-        if (cluster < 2 || cluster >= 0x0FFFFFF8) {
+        if (!valid_cluster(cluster)) {
+            if (cluster < 0x0FFFFFF8) return -1;     // Broken/unreadable chain
             // Past the end: link a fresh cluster (all free) and keep going
             uint32_t newc = find_free_cluster();
             if (!newc) return -1;
@@ -727,14 +744,14 @@ static int remove_slot(const dslot_t* s) {
 // ─── VFS operations ───────────────────────────────────────────────────────────
 
 // Create an empty file in directory `dir`. Returns 0 on success.
-static int fat32_create(fs_node_t* dir, char* name) {
+static int create_impl(fs_node_t* dir, char* name) {
     static dslot_t s;
     if (dir_find(dir->inode, name, &s)) return -1;   // Refuse duplicates
     return add_entry(dir, name, 0x20 /* Archive */, 0, 0);
 }
 
 // Create a subdirectory: one zeroed cluster holding "." and "..".
-static int fat32_mkdir(fs_node_t* dir, char* name) {
+static int mkdir_impl(fs_node_t* dir, char* name) {
     static dslot_t s;
     if (dir_find(dir->inode, name, &s)) return -1;
     if (needs_lfn(name) && !valid_long(name)) return VFS_EBADNAME;
@@ -766,7 +783,7 @@ static int fat32_mkdir(fs_node_t* dir, char* name) {
 
 // Delete a file or an empty subdirectory from `dir`. Returns 0 on
 // success, -1 if not found, -2 if it is a directory that is not empty.
-static int fat32_delete(fs_node_t* dir, char* name) {
+static int delete_impl(fs_node_t* dir, char* name) {
     static dslot_t s;
     if (!dir_find(dir->inode, name, &s)) return -1;
     if (strcmp(s.name, ".") == 0 || strcmp(s.name, "..") == 0) return -1;
@@ -788,8 +805,8 @@ static uint32_t parent_of(uint32_t cl) {
 
 // Move an entry (and its long name) to `dst_dir/dst_name`. The data and
 // cluster chain stay where they are; a moved directory's ".." follows.
-static int fat32_rename(fs_node_t* src_dir, char* src_name,
-                        fs_node_t* dst_dir, char* dst_name) {
+static int rename_impl(fs_node_t* src_dir, char* src_name,
+                       fs_node_t* dst_dir, char* dst_name) {
     static dslot_t src, other;
     if (!dir_find(src_dir->inode, src_name, &src)) return -1;
     if (strcmp(src.name, ".") == 0 || strcmp(src.name, "..") == 0) return VFS_EINVAL;
@@ -828,6 +845,41 @@ static int fat32_rename(fs_node_t* src_dir, char* src_name,
     return 0;
 }
 
+// ─── Write-cache flushing ─────────────────────────────────────────────────────
+// Every operation that changes the disk flushes the drive's cache once
+// when it is done (a flush per sector made writes slow and fragile).
+
+static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer) {
+    uint32_t r = write_impl(node, offset, size, buffer);
+    ata_flush();
+    return r;
+}
+
+static int fat32_create(fs_node_t* dir, char* name) {
+    int r = create_impl(dir, name);
+    ata_flush();
+    return r;
+}
+
+static int fat32_mkdir(fs_node_t* dir, char* name) {
+    int r = mkdir_impl(dir, name);
+    ata_flush();
+    return r;
+}
+
+static int fat32_delete(fs_node_t* dir, char* name) {
+    int r = delete_impl(dir, name);
+    ata_flush();
+    return r;
+}
+
+static int fat32_rename(fs_node_t* src_dir, char* src_name,
+                        fs_node_t* dst_dir, char* dst_name) {
+    int r = rename_impl(src_dir, src_name, dst_dir, dst_name);
+    ata_flush();
+    return r;
+}
+
 // The FSInfo sector caches the free-cluster count and a next-free hint.
 // We allocate and free clusters without maintaining them, so mark both
 // "unknown" (0xFFFFFFFF, allowed by the spec): other systems then
@@ -863,6 +915,8 @@ fs_node_t* fat32_init() {
     data_start_sector = fat_start_sector + (bpb.num_fats * bpb.fat_size_32);
     sectors_per_cluster = bpb.sectors_per_cluster;
     root_dir_cluster = bpb.root_cluster;
+    uint32_t total = bpb.total_sectors_32 ? bpb.total_sectors_32 : bpb.total_sectors_16;
+    max_cluster = (total - data_start_sector) / sectors_per_cluster + 1;
 
     invalidate_fsinfo();
 

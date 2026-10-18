@@ -83,6 +83,15 @@ On mount, the FSInfo free-cluster count and next-free hint are set to
 "unknown" (0xFFFFFFFF): KaOS does not maintain them, so other systems
 recompute them.
 
+### Cluster validation
+
+Every cluster number read from the FAT or a directory entry is checked
+with `valid_cluster()` (2 .. last data cluster) before it becomes an LBA
+or is written into the FAT. End-of-chain stops a walk; anything else
+invalid (0, the "bad cluster" code `get_next_cluster` returns on a read
+error, a value past the disk) aborts the operation instead of writing
+to a random sector.
+
 ### Locking
 
 The ATA driver and FAT32 code are not reentrant, and the shell runs
