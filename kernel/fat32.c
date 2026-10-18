@@ -70,6 +70,33 @@ static uint32_t find_free_cluster() {
     return 0; // Disk full
 }
 
+// Release every cluster from `cl` to the end of its chain.
+static void free_chain(uint32_t cl) {
+    while (cl >= 2 && cl < 0x0FFFFFF8) {
+        uint32_t next = get_next_cluster(cl);
+        set_fat_entry(cl, 0);
+        cl = next;
+    }
+}
+
+// Cut the chain so it holds just enough clusters for `length` bytes and
+// release the tail (left behind when a file is rewritten shorter).
+static void truncate_chain(uint32_t first, uint32_t length) {
+    uint32_t cluster_bytes = sectors_per_cluster * 512;
+    uint32_t keep = (length + cluster_bytes - 1) / cluster_bytes;
+    if (keep == 0) return; // Callers never truncate to an empty file
+
+    uint32_t cl = first;
+    for (uint32_t i = 1; i < keep; i++) {
+        cl = get_next_cluster(cl);
+        if (cl < 2 || cl >= 0x0FFFFFF8) return; // Chain already shorter
+    }
+    uint32_t tail = get_next_cluster(cl);
+    if (tail < 2 || tail >= 0x0FFFFFF8) return; // Nothing past the end
+    if (set_fat_entry(cl, 0x0FFFFFFF) != 0) return;
+    free_chain(tail);
+}
+
 // The node's `impl` field remembers where its directory entry lives
 // (packed by finddir as dir_lba * 16 + entry_index) so writes can update
 // the recorded file size and first cluster.
@@ -153,8 +180,9 @@ static uint32_t fat32_write(fs_node_t *node, uint32_t offset, uint32_t size, uin
     }
 
     // echo rewrites whole files from offset 0, so writes define the new
-    // size (truncating semantics). Tail clusters are not freed (lazy).
+    // size (truncating semantics); clusters past the new end are freed.
     node->length = offset + written;
+    truncate_chain(node->inode, node->length);
     update_dir_entry(node);
 
     return written;
@@ -403,13 +431,7 @@ static int fat32_delete(fs_node_t* dir, char* name) {
                     if (e->name[n] != want[n]) { match = 0; break; }
                 if (!match) continue;
 
-                // Free the cluster chain
-                uint32_t cl = (e->first_cluster_hi << 16) | e->first_cluster_lo;
-                while (cl >= 2 && cl < 0x0FFFFFF8) {
-                    uint32_t next = get_next_cluster(cl);
-                    set_fat_entry(cl, 0);
-                    cl = next;
-                }
+                free_chain((e->first_cluster_hi << 16) | e->first_cluster_lo);
 
                 e->name[0] = 0xE5; // Mark deleted
                 if (ata_write_sector(lba + s, buffer) != 0) return -1;
