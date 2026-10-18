@@ -6,6 +6,7 @@
 netif_t netif;
 
 void eth_receive(const uint8_t* frame, uint32_t len);
+void tcp_tick();
 
 // Bottom half of the driver: a kernel task polls the card every tick and
 // runs each frame up the stack (with the network lock held).
@@ -13,6 +14,7 @@ static void net_task() {
     while (1) {
         uint32_t f = net_lock();
         rtl8139_poll(eth_receive);
+        tcp_tick();
         net_unlock(f);
         task_sleep(1);
     }

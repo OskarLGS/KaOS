@@ -89,6 +89,14 @@ int  dhcp_configure();
 // DNS: resolve `name` (or a dotted IP) to an address. Task context.
 int  dns_resolve(const char* name, uint32_t* ip);
 
+// TCP (client). Task context; ids are small integers.
+// connect: id, -1 (timeout/no route) or -2 (refused)
+int  tcp_connect(uint32_t ip, uint16_t port, uint32_t timeout_ms);
+int  tcp_send(int id, const void* data, uint32_t len);      // Bytes, or -1
+// Bytes read; 0 = the peer closed (end of stream); -1 = timeout/reset
+int  tcp_recv(int id, void* buf, uint32_t max, uint32_t timeout_ms);
+void tcp_close(int id);
+
 // Helpers
 void ip_to_str(uint32_t ip, char* out);        // "10.0.2.15" (16 bytes)
 int  str_to_ip(const char* s, uint32_t* ip);   // 1 if it parsed

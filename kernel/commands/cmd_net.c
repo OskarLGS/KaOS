@@ -4,6 +4,7 @@
 #include "../task.h"
 #include "../timer.h"
 #include "../net/net.h"
+#include "../vfs.h"
 
 // "label value\n" in one atomic print
 static void print_field(const char* label, const char* value) {
@@ -202,7 +203,144 @@ static void cmd_host(char* args) {
     shell_run_job("host", host_job, args);
 }
 
+// ─── fetch: a minimal HTTP/1.0 client ─────────────────────────────────────────
+
+// Print `n` bytes of body text, dropping carriage returns
+static void print_body(const char* s, int n) {
+    char out[257];
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        if (s[i] == '\r') continue;
+        out[k++] = s[i];
+        if (k == 256) { out[k] = '\0'; print_string(out); k = 0; }
+    }
+    out[k] = '\0';
+    print_string(out);
+}
+
+static void fetch_job() {
+    char* a = shell_job_args();
+    while (*a == ' ') a++;
+
+    // Optional "> path": save the body instead of printing it
+    char* save = 0;
+    for (char* p = a; *p; p++) {
+        if (*p == '>') {
+            *p = '\0';
+            save = p + 1;
+            while (*save == ' ') save++;
+            break;
+        }
+    }
+    char* end = a + strlen(a);
+    while (end > a && end[-1] == ' ') *--end = '\0';
+    if (!*a || (save && !*save)) {
+        print_string("Usage: fetch [http://]host[:port][/path] [> file]\n");
+        task_exit(2, EXIT_NORMAL);
+    }
+
+    // URL -> host, port, path
+    if (strncmp(a, "http://", 7) == 0) a += 7;
+    char host[96], path[160];
+    int hn = 0;
+    while (*a && *a != '/' && *a != ':' && hn < 95) host[hn++] = *a++;
+    host[hn] = '\0';
+    uint16_t port = 80;
+    if (*a == ':') {
+        a++;
+        int p = 0;
+        while (*a >= '0' && *a <= '9') p = p * 10 + (*a++ - '0');
+        if (p > 0 && p < 65536) port = (uint16_t)p;
+    }
+    if (*a == '/') { int i = 0; while (*a && i < 159) path[i++] = *a++; path[i] = '\0'; }
+    else strcpy(path, "/");
+
+    uint32_t ip;
+    if (!dns_resolve(host, &ip)) {
+        print_string("fetch: unknown host\n");
+        task_exit(1, EXIT_NORMAL);
+    }
+    int c = tcp_connect(ip, port, 5000);
+    if (c == -2) { print_string("fetch: connection refused\n"); task_exit(1, EXIT_NORMAL); }
+    if (c < 0)   { print_string("fetch: could not connect\n"); task_exit(1, EXIT_NORMAL); }
+
+    static char req[400];
+    strcpy(req, "GET ");
+    strcpy(req + strlen(req), path);
+    strcpy(req + strlen(req), " HTTP/1.0\r\nHost: ");
+    strcpy(req + strlen(req), host);
+    strcpy(req + strlen(req), "\r\nUser-Agent: KaOS-fetch/1.0\r\nConnection: close\r\n\r\n");
+    if (tcp_send(c, req, strlen(req)) < 0) {
+        print_string("fetch: send failed\n");
+        tcp_close(c);
+        task_exit(1, EXIT_NORMAL);
+    }
+
+    // Destination file for "> path"
+    fs_node_t* out = 0;
+    if (save) {
+        out = vfs_resolve(save);
+        if (!out) {
+            char leaf[VFS_PATH_MAX];
+            fs_node_t* dir = vfs_resolve_parent(save, leaf);
+            if (dir && create_fs(dir, leaf) == 0) out = finddir_fs(dir, leaf);
+            vfs_release(dir);
+        }
+        if (!out || (out->flags & 0x7) != FS_FILE) {
+            print_string("fetch: cannot write that file\n");
+            vfs_release(out);
+            tcp_close(c);
+            task_exit(1, EXIT_NORMAL);
+        }
+    }
+
+    // Read the response; split the headers off the body
+    static char buf[512];
+    static char status[80];
+    int in_headers = 1, st_len = 0, matched = 0, status_done = 0;
+    uint32_t body = 0;
+    int n, failed = 0;
+    while ((n = tcp_recv(c, buf, sizeof(buf), 10000)) > 0) {
+        int i = 0;
+        while (in_headers && i < n) {
+            char ch = buf[i++];
+            if (!status_done) {
+                if (ch == '\r' || ch == '\n') status_done = 1;
+                else if (st_len < 79) status[st_len++] = ch;
+            }
+            // End of headers: \r\n\r\n
+            const char* pat = "\r\n\r\n";
+            matched = (ch == pat[matched]) ? matched + 1 : (ch == '\r' ? 1 : 0);
+            if (matched == 4) in_headers = 0;
+        }
+        if (i < n) {
+            if (out) write_fs(out, body, n - i, (uint8_t*)buf + i);
+            else print_body(buf + i, n - i);
+            body += n - i;
+        }
+    }
+    if (n < 0) failed = 1;
+    tcp_close(c);
+    vfs_release(out);
+
+    status[st_len] = '\0';
+    char line[140];
+    strcpy(line, "\n[");
+    strcpy(line + strlen(line), st_len ? status : "no HTTP response");
+    strcpy(line + strlen(line), ", ");
+    int_to_ascii((int)body, line + strlen(line));
+    strcpy(line + strlen(line), failed ? " bytes, connection lost]\n" : " bytes]\n");
+    print_string(line);
+    task_exit(failed || !st_len ? 1 : 0, EXIT_NORMAL);
+}
+
+static void cmd_fetch(char* args) {
+    if (!netif.up) { print_string("No network card.\n"); return; }
+    shell_run_job("fetch", fetch_job, args);
+}
+
 void init_cmd_net() {
+    register_command("fetch", "HTTP GET (fetch 10.0.2.2:8080/f.txt [> disk/f])", cmd_fetch);
     register_command("dhcp", "Renew the address with DHCP", cmd_dhcp);
     register_command("host", "Resolve a name with DNS (host example.com)", cmd_host);
     register_command("ifconfig", "Show/set the interface (ifconfig dns 10.0.2.3)", cmd_ifconfig);

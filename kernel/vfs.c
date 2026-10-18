@@ -9,14 +9,20 @@ fs_node_t *fs_root = 0; // The root of the filesystem.
 // are not reentrant: without this, the shell (preemptible) could be cut
 // off mid-sector by a program's syscall doing disk I/O of its own.
 // Waiters yield; a holder never yields inside a filesystem operation.
+// A kernel job stopped with Ctrl+C mid-operation (e.g. fetch saving a
+// file) never releases it, so a waiter takes over from a dead holder.
 static volatile int fs_busy = 0;
+static volatile int fs_owner = -1;
 
 static void fs_lock() {
     while (1) {
         uint32_t eflags;
         __asm__ __volatile__("pushf; pop %0; cli" : "=r"(eflags) :: "memory");
-        int got = !fs_busy;
-        if (got) fs_busy = 1;
+        int got = !fs_busy || !task_alive(fs_owner);
+        if (got) {
+            fs_busy = 1;
+            fs_owner = get_current_task_id();
+        }
         if (eflags & 0x200) __asm__ __volatile__("sti" ::: "memory");
         if (got) return;
         yield();
