@@ -87,27 +87,10 @@ static void cmd_exec(char* args) {
         print_string("Usage: exec <path> [args...]\n");
         return;
     }
-    char *path = argv[0];
-    
-    // Simple path parser
-    char *slash = 0;
-    for (int i = 0; path[i] != '\0'; i++) {
-        if (path[i] == '/') {
-            slash = path + i;
-            break;
-        }
-    }
-
-    fs_node_t *file = 0;
-    if (slash) {
-        *slash = '\0';
-        fs_node_t *dir = finddir_fs(fs_root, path);
-        if (dir && (dir->flags & 0x7) == FS_DIRECTORY) {
-            file = finddir_fs(dir, slash + 1);
-        }
-        *slash = '/';
-    } else {
-        file = finddir_fs(fs_root, path);
+    fs_node_t *file = vfs_resolve(argv[0]);
+    if (file && (file->flags & 0x7) != FS_FILE) {
+        vfs_release(file);
+        file = 0;
     }
 
     if (file) {
@@ -131,6 +114,7 @@ static void cmd_exec(char* args) {
         } else {
             print_string("Failed to load ELF.\n");
         }
+        vfs_release(file);
     } else {
         print_string("File not found.\n");
     }

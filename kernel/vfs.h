@@ -10,6 +10,7 @@
 #define FS_PIPE        0x05
 #define FS_SYMLINK     0x06
 #define FS_MOUNTPOINT  0x08
+#define FS_ALLOCATED   0x80  // Node was kmalloc'd by finddir: vfs_release frees it
 
 struct fs_node;
 
@@ -60,5 +61,17 @@ struct dirent *readdir_fs(fs_node_t *node, uint32_t index);
 fs_node_t *finddir_fs(fs_node_t *node, char *name);
 int create_fs(fs_node_t *node, char *name);
 int unlink_fs(fs_node_t *node, char *name);
+
+#define VFS_PATH_MAX 128
+
+// Walk a path like "disk/docs/notes.txt" from fs_root (any number of
+// levels, leading/repeated slashes ignored). Returns the node, or 0.
+// Release the result with vfs_release() when done.
+fs_node_t *vfs_resolve(const char *path);
+// Resolve everything but the last component: returns the parent
+// directory and copies the leaf name into `leaf` (VFS_PATH_MAX bytes).
+fs_node_t *vfs_resolve_parent(const char *path, char *leaf);
+// Free a node returned by finddir/vfs_resolve if it was heap-allocated.
+void vfs_release(fs_node_t *node);
 
 #endif

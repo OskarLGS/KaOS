@@ -316,7 +316,8 @@ static fs_node_t *fat32_finddir(fs_node_t *node, char *name) {
                 strcpy(res->name, name);
                 res->inode   = (entry->first_cluster_hi << 16) | entry->first_cluster_lo;
                 res->length  = entry->file_size;
-                res->flags   = (entry->attr & 0x10) ? FS_DIRECTORY : FS_FILE;
+                res->flags   = ((entry->attr & 0x10) ? FS_DIRECTORY : FS_FILE)
+                               | FS_ALLOCATED;
                 res->read    = fat32_read;
                 res->write   = fat32_write;
                 res->readdir = fat32_readdir;

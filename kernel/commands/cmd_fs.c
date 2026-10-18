@@ -3,110 +3,84 @@
 #include "../util.h"
 #include "../screen.h"
 
-static void cmd_ls(char* args) {
-    char *path = args;
-    while (*path == ' ') path++;
-    
-    fs_node_t *dir = fs_root;
-    if (strlen(path) > 0) {
-        dir = finddir_fs(fs_root, path);
-    }
+static char* skip_spaces(char* s) {
+    while (*s == ' ') s++;
+    return s;
+}
 
+static void cmd_ls(char* args) {
+    char *path = skip_spaces(args);
+
+    fs_node_t *dir = vfs_resolve(path);
     if (!dir || (dir->flags & 0x7) != FS_DIRECTORY) {
         print_string("Directory not found.\n");
-    } else {
-        int i = 0;
-        struct dirent *node = 0;
-        while ((node = readdir_fs(dir, i)) != 0) {
-            fs_node_t *fsnode = finddir_fs(dir, node->name);
-            if (fsnode && (fsnode->flags & 0x7) == FS_DIRECTORY) {
-                print_string("(dir)  ");
-            } else {
-                print_string("(file) ");
-            }
-            print_string(node->name);
-            print_string("\n");
-            i++;
-        }
+        vfs_release(dir);
+        return;
     }
+
+    int i = 0;
+    struct dirent *node = 0;
+    while ((node = readdir_fs(dir, i)) != 0) {
+        fs_node_t *fsnode = finddir_fs(dir, node->name);
+        if (fsnode && (fsnode->flags & 0x7) == FS_DIRECTORY) {
+            print_string("(dir)  ");
+        } else {
+            print_string("(file) ");
+        }
+        vfs_release(fsnode);
+        print_string(node->name);
+        print_string("\n");
+        i++;
+    }
+    vfs_release(dir);
 }
 
 static void cmd_cat(char* args) {
-    char *path = args;
-    
-    // Simple path parser for one level: subdir/file
-    char *slash = 0;
-    for (int i = 0; path[i] != '\0'; i++) {
-        if (path[i] == '/') {
-            slash = path + i;
-            break;
-        }
-    }
+    char *path = skip_spaces(args);
+    fs_node_t *node = vfs_resolve(path);
 
-    fs_node_t *node = 0;
-    if (slash) {
-        *slash = '\0';
-        fs_node_t *dir = finddir_fs(fs_root, path);
-        if (dir && (dir->flags & 0x7) == FS_DIRECTORY) {
-            node = finddir_fs(dir, slash + 1);
-        }
-        *slash = '/'; // Restore path for error message
-    } else {
-        node = finddir_fs(fs_root, path);
-    }
-
-    if (node) {
-        uint8_t buffer[513]; // 512 of data + NUL terminator
-        uint32_t sz = read_fs(node, 0, 512, buffer);
-        if (sz > 0) {
-            buffer[sz] = '\0';
-            print_string((char*)buffer);
-        }
-        if (sz > 0 && buffer[sz-1] != '\n') print_string("\n");
-    } else {
+    if (!node || (node->flags & 0x7) != FS_FILE) {
         print_string("File not found.\n");
+        vfs_release(node);
+        return;
     }
-}
 
-// Split a one-level path "dir/file" into the parent directory node and the
-// leaf name. For a bare "file", the parent is the filesystem root. Returns
-// 0 if the directory part can't be resolved. Modifies `path` in place.
-static fs_node_t* resolve_parent(char* path, char** out_name) {
-    char* slash = 0;
-    for (int i = 0; path[i] != '\0'; i++) {
-        if (path[i] == '/') { slash = path + i; break; }
+    // Print the whole file in 512-byte chunks
+    uint8_t buffer[513]; // 512 of data + NUL terminator
+    uint32_t offset = 0, sz;
+    char last = '\n';
+    while ((sz = read_fs(node, offset, 512, buffer)) > 0) {
+        buffer[sz] = '\0';
+        print_string((char*)buffer);
+        last = buffer[sz - 1];
+        offset += sz;
     }
-    if (!slash) {
-        *out_name = path;
-        return fs_root;
-    }
-    *slash = '\0';
-    fs_node_t* dir = finddir_fs(fs_root, path);
-    *out_name = slash + 1;
-    if (dir && (dir->flags & 0x7) == FS_DIRECTORY) return dir;
-    return 0;
+    if (last != '\n') print_string("\n");
+    vfs_release(node);
 }
 
 static void cmd_touch(char* args) {
-    while (*args == ' ') args++;
+    args = skip_spaces(args);
     if (*args == '\0') { print_string("Usage: touch <path>\n"); return; }
 
-    char* name;
-    fs_node_t* dir = resolve_parent(args, &name);
+    char name[VFS_PATH_MAX];
+    fs_node_t* dir = vfs_resolve_parent(args, name);
     if (!dir) { print_string("Directory not found.\n"); return; }
     if (create_fs(dir, name) == 0) print_string("Created.\n");
     else print_string("Could not create file (exists, or not supported here).\n");
+    vfs_release(dir);
 }
 
 static void cmd_rm(char* args) {
-    while (*args == ' ') args++;
+    args = skip_spaces(args);
     if (*args == '\0') { print_string("Usage: rm <path>\n"); return; }
 
-    char* name;
-    fs_node_t* dir = resolve_parent(args, &name);
+    char name[VFS_PATH_MAX];
+    fs_node_t* dir = vfs_resolve_parent(args, name);
     if (!dir) { print_string("Directory not found.\n"); return; }
     if (unlink_fs(dir, name) == 0) print_string("Removed.\n");
     else print_string("Could not remove file (not found, or not supported here).\n");
+    vfs_release(dir);
 }
 
 static void cmd_echo(char* args) {
@@ -118,49 +92,34 @@ static void cmd_echo(char* args) {
             break;
         }
     }
-    
-    if (gt_idx > 0) {
-        cmd[gt_idx - 1] = '\0'; // End text before space
-        char *text = cmd;
-        char *filename = cmd + gt_idx + 2; // Skip "> "
 
-        // One-level path support (same as cat): dir/file
-        fs_node_t *fsnode = 0;
-        char *slash = 0;
-        for (int i = 0; filename[i] != '\0'; i++) {
-            if (filename[i] == '/') { slash = filename + i; break; }
-        }
-        if (slash) {
-            *slash = '\0';
-            fs_node_t *dir = finddir_fs(fs_root, filename);
-            if (dir && (dir->flags & 0x7) == FS_DIRECTORY) {
-                fsnode = finddir_fs(dir, slash + 1);
-            }
-            *slash = '/';
-        } else {
-            fsnode = finddir_fs(fs_root, filename);
-        }
-
-        // Create the file if it doesn't exist yet, then write
-        if (!fsnode && slash) {
-            *slash = '\0';
-            fs_node_t *dir = finddir_fs(fs_root, filename);
-            if (dir && (dir->flags & 0x7) == FS_DIRECTORY) {
-                if (create_fs(dir, slash + 1) == 0)
-                    fsnode = finddir_fs(dir, slash + 1);
-            }
-            *slash = '/';
-        }
-
-        if (fsnode) {
-            write_fs(fsnode, 0, strlen(text), (uint8_t*)text);
-            print_string("Written to file.\n");
-        } else {
-            print_string("File not found and could not be created.\n");
-        }
-    } else {
+    if (gt_idx <= 0) {
         print_string("Usage: echo text > filename\n");
+        return;
     }
+
+    cmd[gt_idx - 1] = '\0'; // End text before space
+    char *text = cmd;
+    char *filename = skip_spaces(cmd + gt_idx + 1);
+
+    fs_node_t *fsnode = vfs_resolve(filename);
+
+    // Create the file if it doesn't exist yet, then write
+    if (!fsnode) {
+        char name[VFS_PATH_MAX];
+        fs_node_t *dir = vfs_resolve_parent(filename, name);
+        if (dir && create_fs(dir, name) == 0)
+            fsnode = finddir_fs(dir, name);
+        vfs_release(dir);
+    }
+
+    if (fsnode && (fsnode->flags & 0x7) == FS_FILE) {
+        write_fs(fsnode, 0, strlen(text), (uint8_t*)text);
+        print_string("Written to file.\n");
+    } else {
+        print_string("File not found and could not be created.\n");
+    }
+    vfs_release(fsnode);
 }
 
 void init_cmd_fs() {
