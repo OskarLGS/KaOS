@@ -5,3 +5,5 @@ build/debug.log
 build/_shot.ppm
 build/_s.ppm
 build/build.log
+build/kernel-symbols.elf
+build/kernel.map

@@ -89,11 +89,23 @@ static void cmd_halt(char* args) {
     __asm__ __volatile__("hlt");
 }
 
+// Deliberately fault in the kernel, to see (and test) the panic screen
+static void cmd_panic(char* args) {
+    (void)args;
+    if (current_uid() != UID_ROOT) {
+        print_string("panic: only root can crash the kernel\n");
+        return;
+    }
+    print_string("Writing to an unmapped kernel address...\n");
+    *(volatile uint32_t*)0xFFFFF000 = 0xDEAD;
+}
+
 void init_cmd_sys() {
     register_command("clear", "Clear the screen", cmd_clear);
     register_command("info", "Display OS info", cmd_info);
     register_command("version", "Show version numbers", cmd_version);
     register_command("halt", "Halt the system", cmd_halt);
     register_command("date", "Show the date and time (RTC)", cmd_date);
+    register_command("panic", "Crash the kernel on purpose (root, for testing)", cmd_panic);
     register_command("keymap", "Keyboard layout (keymap es / keymap us)", cmd_keymap);
 }

@@ -49,9 +49,10 @@ hard disk with the user programs — your files on it persist).
 ./test.sh
 ```
 
-Builds, then boots KaOS five times in headless QEMU (desktop, files,
-programs, users, network) on throw-away copies of the disk, types
-commands and checks the output and the disk contents. ~1.5 minutes.
+Builds, then boots KaOS seven times in headless QEMU (desktop, files,
+programs, users, network, Spanish keyboard, kernel panic) on throw-away
+copies of the disk, types commands and checks the output and the disk
+contents. ~1.5 minutes.
 
 ## Run
 

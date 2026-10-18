@@ -342,8 +342,28 @@ def test_keymap_es(ctx):
         raise Fail("fsck.fat found problems:\n" + report)
 
 
+def test_panic(ctx):
+    """A kernel fault stops the machine with a readable report."""
+    k, disk = session(ctx, "panic", net=False)
+    try:
+        k.run("panic", "KERNEL PANIC: unhandled exception in the kernel",
+              "Page Fault", "Faulting address (CR2) 0xFFFFF000", "EIP=0x",
+              "Running task: shell (pid 0)", "The system has been halted.")
+        eip = int(k.output().split("EIP=0x")[1][:8], 16)
+    finally:
+        k.close()
+    # The reported EIP must fall inside the function that faulted
+    funcs = []
+    for l in open(os.path.join(ROOT, "build", "kernel.map")):
+        addr, _, name = l.split()
+        funcs.append((int(addr, 16), name))
+    owner = max((f for f in funcs if f[0] <= eip), default=(0, "?"))[1]
+    if owner != "cmd_panic":
+        raise Fail(f"EIP {eip:#x} maps to {owner}, expected cmd_panic")
+
+
 TESTS = [test_gui_boot, test_shell_and_files, test_programs, test_users, test_network,
-         test_keymap_es]
+         test_keymap_es, test_panic]
 
 
 class Ctx:

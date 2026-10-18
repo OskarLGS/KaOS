@@ -63,6 +63,14 @@ done
 
 ld -m elf_i386 -T "$KERNEL_DIR/linker.ld" "${OBJS[@]}" -o "$BUILD_DIR/full_kernel.bin"
 
+# Same link as ELF, only for its symbol table: build/kernel.map lists
+# every function's address, to turn a panic's EIP into a name.
+sed 's/OUTPUT_FORMAT("binary")//' "$KERNEL_DIR/linker.ld" > "$BUILD_DIR/linker_elf.tmp"
+ld -m elf_i386 --no-warn-rwx-segments -T "$BUILD_DIR/linker_elf.tmp" "${OBJS[@]}" \
+   -o "$BUILD_DIR/kernel-symbols.elf" 2>/dev/null
+nm -n "$BUILD_DIR/kernel-symbols.elf" | grep -i " t " > "$BUILD_DIR/kernel.map"
+rm -f "$BUILD_DIR/linker_elf.tmp"
+
 # Compile Recovery
 echo "[3/5] Compiling recovery..."
 nasm -f bin "$KERNEL_DIR/recovery.asm" -o "$BUILD_DIR/recovery.bin"

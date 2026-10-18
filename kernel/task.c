@@ -4,6 +4,7 @@
 #include "gdt.h"
 #include "paging.h"
 #include "timer.h"
+#include "panic.h"
 
 // Defined in usermode.asm — builds an iret frame and drops to Ring 3
 extern void enter_user_mode(uint32_t entry, uint32_t user_stack_top);
@@ -150,12 +151,8 @@ void schedule() {
     int prev = current_task;
     int next = (current_task + 1) % task_count;
 
-    if (prev > 0 && *(uint32_t*)tasks[prev].stack != STACK_CANARY) {
-        print_string("\nKERNEL PANIC: kernel stack overflow in task '");
-        print_string(tasks[prev].name);
-        print_string("'\n");
-        while (1) __asm__ __volatile__("hlt");
-    }
+    if (prev > 0 && *(uint32_t*)tasks[prev].stack != STACK_CANARY)
+        panic("kernel stack overflow (canary overwritten)", 0);
 
     // A sleeping task is READY but skipped until its wake tick. The shell
     // (task 0) never sleeps, so there is always something to run.

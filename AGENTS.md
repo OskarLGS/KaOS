@@ -71,10 +71,19 @@ The same port also receives **every console character** (print_char
 mirrors it), so the log is a full transcript of the session with the
 milestone letters interleaved.
 
+## Kernel panics
+
+A fault in Ring 0 (or a kernel stack overflow) shows a full report —
+exception, CR2, all registers, running task, CR3 — drawn straight to
+the screen (red screen on the desktop) and mirrored to the debug port.
+Turn its EIP into a function with `build/kernel.map` (written by
+build.sh: the last entry whose address is ≤ EIP). `panic` (root) faults
+on purpose to try it.
+
 ## Automated tests
 
-`./test.sh` builds and runs `tests/kaos_test.py`: six QEMU sessions
-(desktop, files, programs, users, network, ES keyboard), each on a throw-away copy
+`./test.sh` builds and runs `tests/kaos_test.py`: seven QEMU sessions
+(desktop, files, programs, users, network, ES keyboard, panic), each on a throw-away copy
 of `build/fat32.img` (your disk is never touched), driven through the
 QEMU monitor and checked against the console transcript, plus host-side
 checks (mtools, `cmp`, `fsck.fat`). It starts its own HTTP servers for
