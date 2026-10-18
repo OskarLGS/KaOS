@@ -34,13 +34,29 @@ const char scancode_to_ascii[] = {
 
 We only process key presses and ignore releases.
 
+## Modifiers and extended keys
+
+- **Shift** (0x2A / 0x36) selects the shifted table; **Ctrl** (0x1D, and
+  E0 1D for right Ctrl) is tracked for **Ctrl+C**, which stops the
+  foreground program directly from the IRQ.
+- `0xE0` prefixes extended keys. The next make code is translated to a
+  control code no printable key produces (keyboard.h):
+
+| Key | Scancode | Delivered as |
+|-----|----------|--------------|
+| ↑ / ↓ | E0 48 / E0 50 | `KEY_UP` 0x11 / `KEY_DOWN` 0x12 |
+| ← / → | E0 4B / E0 4D | `KEY_LEFT` 0x13 / `KEY_RIGHT` 0x14 |
+| PgUp / PgDn | E0 49 / E0 51 | `KEY_PGUP` 0x15 / `KEY_PGDN` 0x16 |
+| Keypad Enter | E0 1C | `'\n'` |
+
+Extended releases and the fake-shift bytes some keys send are dropped.
+SYS_READ ignores these codes, so they never end up in a program's line.
+
 ## Input Buffer
 
-Characters are accumulated into a 256-byte `key_buffer[]`. When Enter is pressed (`0x1C`), the buffer is sent to the shell handler and cleared.
-
-Special keys:
-- **Backspace** (`0x0E`): removes the last character from the buffer.
-- **Enter** (`0x1C`): submits the buffer to the shell.
+Keys go into a 256-entry ring buffer (`volatile`: written by the IRQ,
+read by `keyboard_get_char()`, which returns 0 when empty). Line editing
+(Backspace, Enter, history) is the shell's job — see shell.md.
 
 ## Key File
 - `kernel/keyboard.c/h`

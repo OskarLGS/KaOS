@@ -2,7 +2,7 @@
 
 From bare metal to a full operating system.
 
-> Estado a 2026-06: **Fases 1–4 completas**, Fase 5 casi completa.
+> Estado a 2026-10: **Fases 1–7 completas**; siguiente: Fase 8.
 > Documentación por subsistema en [docs/](docs/README.md); guía de
 > build/test en [AGENTS.md](AGENTS.md).
 
@@ -46,7 +46,7 @@ From bare metal to a full operating system.
 
 ---
 
-## 🟣 Fase 5: GUI y Ventanas (casi completa)
+## 🟣 Fase 5: GUI y Ventanas ✅
 ### Meta: Un escritorio usable con ventanas.
 - [x] **Modo VESA (VBE)**: 800x600x32 con framebuffer lineal.
 - [x] **Librería Gráfica**: Primitivas rápidas (`rep stosl/movsl`),
@@ -57,16 +57,19 @@ From bare metal to a full operating system.
 - [x] **Terminal gráfica**: La shell completa dentro de una ventana.
 - [x] **Z-order real**: Traer al frente la ventana enfocada al hacer clic,
       restaurar desde taskbar o abrir desde el menú inicio.
-- [ ] **Redimensionar ventanas**: Arrastrando el borde inferior-derecho.
-- [ ] **App: Reloj** — uptime/hora con el RTC (ver Fase 7).
-- [ ] **App: Visor de ficheros** — navegar el VFS con el ratón
-      (estrena `readdir` gráfico y doble clic).
-- [ ] **Scroll-back en la terminal** y historial de comandos (flechas ↑/↓,
-      requiere emitir teclas extendidas desde el driver).
+- [x] **Redimensionar ventanas**: bordes izquierdo/derecho/inferior y
+      esquinas; la terminal recoloca su texto al soltar.
+- [x] **App: Reloj** — ventana Clock (hora grande + fecha) y hora en la
+      barra de tareas, leídas del RTC.
+- [x] **App: Visor de ficheros** (Files) — navegar el VFS con ratón
+      (doble clic) o teclado y leer ficheros de texto con scroll.
+- [x] **Scroll-back en la terminal** (RePág/AvPág, 200 líneas) e
+      historial de comandos (↑/↓) en ambos modos: el driver emite teclas
+      extendidas (prefijo 0xE0) y la shell tiene un editor de línea único.
 
 ---
 
-## 🔵 Fase 6: Procesos de Verdad (en progreso)
+## 🔵 Fase 6: Procesos de Verdad ✅
 ### Meta: De "cargar un ELF" a un modelo de procesos digno.
 - [x] **Multitarea preemptiva**: el timer (IRQ0) conduce `schedule()`;
       una tarea que no cede CPU ya no congela el sistema (demo: `spin`).
@@ -74,33 +77,47 @@ From bare metal to a full operating system.
       pide tu nombre). Bloqueante vía yield; modelo de foreground para
       la propiedad del teclado entre shell y programa. `print_string`
       atómico bajo preempción. Reaping de tareas paradas.
-- [ ] **Más syscalls**: `open`/`close`/`read` sobre el VFS, `sbrk` para
-      heap de usuario, `getpid`, `sleep`.
-- [ ] **Argumentos a programas**: `exec disk/app.elf hola mundo` →
-      `_start(argc, argv)`.
-- [ ] **Códigos de salida y `wait`**: La shell informa de cómo terminó
-      el programa.
-- [ ] **Varios programas de usuario a la vez**: Asignación dinámica de
-      la región de usuario (hoy: un programa fijo en 0xA00000).
-- [ ] **Espacios de direcciones por proceso**: Un page directory por
-      tarea — el gran salto de aislamiento real.
+- [x] **Más syscalls**: `open`/`close`/`read`/`write` sobre el VFS con
+      tabla de descriptores por tarea, `sbrk` (heap de usuario), `getpid`
+      y `sleep` (estado dormido real en el planificador). Demos: `cat.elf`,
+      `cp.elf`, `sleep.elf`, `heap.elf`.
+- [x] **Argumentos a programas**: `exec disk/args.elf hola mundo` →
+      `main(argc, argv)` (crt0 en `user/crt0.asm`; el kernel prepara la pila).
+- [x] **Códigos de salida**: `return` desde `main` / `sys_exit(n)`; la
+      shell espera al programa en primer plano e informa
+      (`[exited with code 42]`, `[crashed: Page Fault]`, `^C`).
+      **Ctrl+C** interrumpe el programa en primer plano.
+- [x] **Espacios de direcciones por proceso**: un page directory por
+      programa (CR3 en cada cambio de tarea), pool de marcos de 4 KB,
+      punteros de las syscalls validados contra las tablas de páginas.
+- [x] **Varios programas de usuario a la vez**: todos enlazados en
+      0x40000000 con memoria propia; `exec prog &` en segundo plano,
+      procesos zombi hasta que la shell recoge su estado.
 
 ---
 
-## 🟤 Fase 7: Almacenamiento Completo (en progreso)
+## 🟤 Fase 7: Almacenamiento Completo ✅
 ### Meta: Un disco que se siente como un disco.
 - [x] **Crear ficheros**: `touch disk/nuevo.txt` y `echo texto > nuevo`
       (entrada de directorio 8.3 nueva). VFS con `create`/`unlink`.
 - [x] **Borrar ficheros**: `rm` (marca 0xE5 + libera la cadena de clusters).
       Verificado: persiste entre reinicios y desde el host (`mdir`).
-- [ ] **Crear directorios**: `mkdir` (entradas `.` y `..`).
-- [ ] **Liberar clusters al truncar** (hoy quedan huérfanos).
-- [ ] **Nombres largos (LFN)**: Leer (y luego escribir) entradas UCS-2.
-- [ ] **Rutas multinivel**: `cat disk/docs/sub/leeme.txt` (resolver el
-      path en el VFS en vez de un solo nivel en cada comando).
-- [ ] **RTC (CMOS)**: Fecha/hora real para timestamps de ficheros y el
-      reloj de la Fase 5.
-- [ ] **cp / mv** entre RAMFS y disco.
+- [x] **Crear directorios**: `mkdir` (entradas `.` y `..`) y `rm` de
+      directorios vacíos. Nombres que no caben en 8.3 se rechazan.
+- [x] **Liberar clusters al truncar**: reescribir un fichero más corto
+      libera la cola de la cadena (verificado con `fsck.fat`).
+- [x] **Nombres largos (LFN)**: lectura y escritura de entradas UCS-2
+      (checksum, alias `NOMBRE~N.EXT`), búsqueda por nombre largo o alias,
+      hasta 127 caracteres; verificado con mtools y `fsck.fat`.
+- [x] **Rutas multinivel**: `vfs_resolve` recorre cualquier profundidad
+      (`cat disk/docs/sub/leeme.txt`); lo usan la shell y `SYS_OPEN`.
+- [x] **RTC (CMOS)**: Fecha/hora real (`date`), timestamps de creación y
+      modificación en FAT32 y reloj del escritorio.
+- [x] **cp / mv** integrados: `mv` renombra/mueve sin copiar datos en
+      FAT32 (actualiza `..` de directorios movidos) y copia+borra entre
+      sistemas de ficheros; destino directorio = mismo nombre dentro.
+- [x] **Bloqueo del sistema de ficheros**: un lock en el VFS serializa el
+      acceso al driver ATA/FAT32 bajo preempción.
 
 ---
 

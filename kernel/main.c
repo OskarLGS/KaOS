@@ -13,8 +13,8 @@
 #include "mouse.h"
 #include "window.h"
 #include "terminal.h"
-
-static char key_line_buffer[256];
+#include "rtc.h"
+#include "files.h"
 
 // ─── Debug helper ─────────────────────────────────────────────────────────────
 // Port 0xE9 is logged by VirtualBox/Bochs to the host debug log (VBox.log).
@@ -51,6 +51,23 @@ static void about_paint(window_t* self) {
     draw_string(cx, cy + 88, line, 0x6FBF6F);
 }
 
+static void clock_paint(window_t* self) {
+    int cx = self->x + 14;
+    int cy = self->y + TITLEBAR_H + 14;
+
+    rtc_time_t now;
+    rtc_read(&now);
+    char buf[16];
+
+    rtc_format_time(&now, buf);
+    draw_string_scaled(cx, cy, buf, 0xFFFFFF, 3);    // 8 chars x 24 px
+
+    strcpy(buf, (char*)rtc_weekday_name(&now));
+    append(buf, ' ');
+    rtc_format_date(&now, buf + strlen(buf));
+    draw_string(cx, cy + 36, buf, 0x9A9A9A);
+}
+
 static void run_desktop() {
     dbg('D'); // entering desktop loop
     wm_init();
@@ -60,6 +77,12 @@ static void run_desktop() {
     terminal_init(term);
     window_t* about = wm_create(300, 200, 280, 160, "About KaOS");
     if (about) about->on_paint = about_paint;
+    window_t* clock = wm_create(560, 40, 220, 90, "Clock");
+    if (clock) clock->on_paint = clock_paint;
+    // File browser: starts hidden, opened from the KaOS start menu
+    window_t* files = wm_create(120, 110, 340, 300, "Files");
+    files_init(files);
+    if (files) wm_hide(files);
     dbg('W'); // windows created
 
     static uint8_t prev_buttons = 0;
@@ -67,12 +90,21 @@ static void run_desktop() {
     uint32_t last_uptime = (uint32_t)-1;
 
     while (1) {
-        // Route keystrokes to the terminal while its window is focused
-        int typed = 0;
-        if (wm_get_focused() == terminal_window()) {
+        // Route keystrokes to the terminal while its window is focused.
+        // A running foreground program owns the keyboard (SYS_READ).
+        shell_poll();
+        int typed = terminal_take_dirty();
+        window_t* fw = wm_get_focused();
+        if (fw == terminal_window() && get_foreground() == 0) {
             char c;
             while ((c = keyboard_get_char()) != 0) {
                 terminal_handle_key(c);
+                typed = 1;
+            }
+        } else if (fw && fw != terminal_window() && fw->on_key) {
+            char c;
+            while ((c = keyboard_get_char()) != 0) {
+                fw->on_key(fw, c);
                 typed = 1;
             }
         }
@@ -153,30 +185,13 @@ void kernel_main() {
 
     // Text-mode shell loop
     print_string("> ");
-    key_line_buffer[0] = '\0';
 
     while(1) {
         // Stop consuming keys while a foreground program owns the keyboard
         // (its SYS_READ reads them instead). Still yield so it runs.
+        shell_poll();
         char c = (get_foreground() == 0) ? keyboard_get_char() : 0;
-        if (c != 0) {
-            if (c == '\n') {
-                print_string("\n");
-                shell_handler(key_line_buffer);
-                key_line_buffer[0] = '\0';
-            } else if (c == '\b') {
-                if (strlen(key_line_buffer) > 0) {
-                    backspace(key_line_buffer);
-                    print_string("\b \b");
-                }
-            } else {
-                if (strlen(key_line_buffer) < 254) {
-                    char s[2] = {c, '\0'};
-                    append(key_line_buffer, c);
-                    print_string(s);
-                }
-            }
-        }
+        if (c != 0) shell_input_key(c);
         yield();
     }
 }

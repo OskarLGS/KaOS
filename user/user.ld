@@ -1,10 +1,11 @@
-/* KaOS user programs: linked at the start of the Ring 3 region (10 MB).
+/* KaOS user programs: linked at the start of the per-process user region
+   (virtual 0x40000000; every process has its own pages there).
    Must match USER_BASE in kernel/paging.h. */
 ENTRY(_start)
 
 SECTIONS
 {
-    . = 0xA00000;
+    . = 0x40000000;
 
     .text   : { *(.text*) }
     .rodata : { *(.rodata*) }

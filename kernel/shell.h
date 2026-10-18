@@ -3,6 +3,8 @@
 
 #define MAX_COMMANDS 32
 #define MAX_ARGS 16
+#define SHELL_LINE_MAX 256
+#define HISTORY_SIZE   16
 
 typedef void (*command_func)(char* args);
 
@@ -15,6 +17,24 @@ typedef struct {
 void init_shell();
 void register_command(const char* name, const char* description, command_func func);
 void shell_handler(char* input);
+
+// Foreground job: the shell withholds its prompt while `pid` runs, and
+// shell_poll() (called from the input loop) reports how it ended.
+void shell_start_job(int pid);
+// A program started with `exec ... &`: it runs alongside the shell (no
+// keyboard) and its end is reported at the next prompt.
+void shell_start_background(int pid);
+void shell_poll();
+
+// Line editor shared by the text console and the graphical terminal:
+// feed it every key the shell owns. Echo goes through print_string.
+// Enter runs the line; Up/Down walk the command history.
+void shell_input_key(char c);
+
+// Optional hook for `clear` (the graphical terminal clears its window);
+// without one, `clear` wipes the fullscreen console.
+void shell_set_clear_hook(void (*hook)());
+void shell_clear();
 
 // Command initialization prototypes
 void init_cmd_sys();

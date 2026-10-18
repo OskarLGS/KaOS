@@ -14,6 +14,7 @@ Each document covers a specific subsystem of the OS. They are meant to be read i
 | [memory.md](memory.md) | KMalloc (heap), paging (virtual memory) |
 | [shell.md](shell.md) | Command interpreter, buffer management |
 | [ata.md](ata.md) | ATA PIO disk driver, sector read/write |
+| [rtc.md](rtc.md) | CMOS real-time clock, `date`, file timestamps, Clock app |
 | [multitasking.md](multitasking.md) | Task switching, scheduler, context switch |
 | [filesystem.md](filesystem.md) | VFS, RAMFS, FAT32 read/write |
 | [usermode.md](usermode.md) | Ring 3, GDT/TSS, syscalls, fault containment |

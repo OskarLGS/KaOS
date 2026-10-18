@@ -10,7 +10,37 @@ void memory_init() {
     total_used = 0;
 }
 
+// The heap is shared by every task and is also touched from IRQ context
+// (Ctrl+C closes a task's files). With preemption, a switch in the middle
+// of a split or coalesce would corrupt the block list, so both entry
+// points run with interrupts off, restoring the caller's IF afterwards.
+static inline uint32_t heap_lock() {
+    uint32_t eflags;
+    __asm__ __volatile__("pushf; pop %0; cli" : "=r"(eflags) :: "memory");
+    return eflags;
+}
+
+static inline void heap_unlock(uint32_t eflags) {
+    if (eflags & 0x200) __asm__ __volatile__("sti" ::: "memory");
+}
+
+static uint32_t kmalloc_locked(uint32_t size);
+static void kfree_locked(uint32_t addr);
+
 uint32_t kmalloc(uint32_t size) {
+    uint32_t f = heap_lock();
+    uint32_t r = kmalloc_locked(size);
+    heap_unlock(f);
+    return r;
+}
+
+void kfree(uint32_t addr) {
+    uint32_t f = heap_lock();
+    kfree_locked(addr);
+    heap_unlock(f);
+}
+
+static uint32_t kmalloc_locked(uint32_t size) {
     // Reject absurd sizes: the rounding below (size + 4) and the later
     // (size + header) arithmetic would otherwise wrap around and hand back
     // a tiny block for a huge request — a classic heap-overflow primitive.
@@ -45,7 +75,7 @@ uint32_t kmalloc(uint32_t size) {
     return 0; // Out of memory
 }
 
-void kfree(uint32_t addr) {
+static void kfree_locked(uint32_t addr) {
     // Must point just past a real block header inside the heap
     if (addr < HEAP_START + sizeof(memory_block_t)) return;
     if (addr >= HEAP_START + HEAP_SIZE) return;

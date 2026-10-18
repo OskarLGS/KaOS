@@ -24,6 +24,11 @@ typedef struct window {
     int      focused;
     void   (*on_paint)(struct window* self);   // optional — called every redraw
     void   (*on_resize)(struct window* self);  // optional — called on mouse release after resize
+    // optional — left click in the client area; (x, y) relative to its
+    // top-left corner (just below the title bar)
+    void   (*on_click)(struct window* self, int x, int y);
+    // optional — keys typed while this window is focused
+    void   (*on_key)(struct window* self, char c);
     int      min_w, min_h;                     // minimum dimensions enforced during resize
 } window_t;
 
@@ -32,6 +37,7 @@ window_t* wm_create(int x, int y, int w, int h, const char* title);
 void wm_draw_all();
 void wm_draw_desktop();
 window_t* wm_get_focused();
+void wm_hide(window_t* win);   // Like the close button: reopen from the menu
 
 // Input — call these from the main loop
 void wm_on_mouse_move(int x, int y);

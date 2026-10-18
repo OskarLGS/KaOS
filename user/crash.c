@@ -3,7 +3,7 @@
 // kernel kills this task — without taking the system down.
 #include "syscall.h"
 
-void _start(void) {
+int main(void) {
     static const char msg[] = "Attempting to write to kernel memory (0x1000)...\n";
     sys_write(msg, sizeof(msg) - 1);
 
@@ -11,6 +11,5 @@ void _start(void) {
 
     static const char never[] = "This line should never print.\n";
     sys_write(never, sizeof(never) - 1);
-    sys_exit();
-    for (;;);
+    return 0;
 }

@@ -41,6 +41,10 @@ typedef struct {
 
 #define PT_LOAD 1
 
-int elf_load(fs_node_t *file);
+#define ELF_MAX_ARGS 16
+
+// Load `file` into the user region and start it in Ring 3 as
+// main(argc, argv). Returns the new PID, or -1 on error.
+int elf_load(fs_node_t *file, int argc, char** argv);
 
 #endif

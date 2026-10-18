@@ -59,11 +59,19 @@ static void cmd_free(char* args) {
     print_string(" bytes\n");
 }
 
+static void print_kb(const char* label, uint32_t kb) {
+    char line[48];
+    strcpy(line, (char*)label);
+    int_to_ascii((int)kb, line + strlen(line));
+    strcpy(line + strlen(line), " KB\n");
+    print_string(line);
+}
+
 static void cmd_paging(char* args) {
     (void)args;
     uint32_t pd_addr = get_page_directory_addr();
-    print_string("Paging: ENABLED\n");
-    print_string("Page Directory at 0x");
+    print_string("Paging: ENABLED, one address space per user program\n");
+    print_string("Kernel page directory at 0x");
     char hex[] = "00000000";
     char hc[] = "0123456789ABCDEF";
     for (int i = 7; i >= 0; i--) {
@@ -72,6 +80,9 @@ static void cmd_paging(char* args) {
     }
     print_string(hex);
     print_string("\n");
+    print_kb("Frame pool (10-16 MB): ", frames_total() * 4);
+    print_kb("  in use:              ", (frames_total() - frames_free()) * 4);
+    print_kb("  free:                ", frames_free() * 4);
 }
 
 void init_cmd_mem() {

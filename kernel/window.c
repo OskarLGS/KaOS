@@ -2,6 +2,7 @@
 #include "graphics.h"
 #include "util.h"
 #include "mouse.h"
+#include "rtc.h"
 
 static window_t windows[MAX_WINDOWS];
 static int      win_count   = 0;
@@ -109,6 +110,13 @@ void wm_init() {
     resize_win = -1;
 }
 
+static void minimize_window(int i);
+
+void wm_hide(window_t* win) {
+    int idx = (int)(win - windows);
+    if (idx >= 0 && idx < win_count) minimize_window(idx);
+}
+
 window_t* wm_get_focused() {
     if (focused_win < 0) return 0;
     return &windows[focused_win];
@@ -126,6 +134,8 @@ window_t* wm_create(int x, int y, int w, int h, const char* title) {
     win->focused = 0;
     win->on_paint = 0;
     win->on_resize = 0;
+    win->on_click  = 0;
+    win->on_key    = 0;
     win->min_w     = 200;
     win->min_h     = TITLEBAR_H + 60;
 
@@ -168,6 +178,14 @@ void wm_draw_desktop() {
 
         bx += TASK_BTN_W + TASK_BTN_GAP;
     }
+
+    // Clock at the right end of the taskbar
+    rtc_time_t now;
+    rtc_read(&now);
+    char hm[9];
+    rtc_format_time(&now, hm);
+    hm[5] = '\0';                       // HH:MM
+    draw_string(800 - 8 * 5 - 12, TASKBAR_Y + 10, hm, 0xFFFFFF);
 }
 
 static void draw_start_menu() {
@@ -365,6 +383,8 @@ void wm_on_mouse_click(int x, int y, uint8_t buttons) {
                     drag_win    = idx;
                     drag_off_x  = x - w->x;
                     drag_off_y  = y - w->y;
+                } else if (w->on_click) {
+                    w->on_click(w, x - w->x, y - w->y - TITLEBAR_H);
                 }
                 return;
             }

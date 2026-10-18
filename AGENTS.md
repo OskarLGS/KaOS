@@ -83,7 +83,7 @@ echo "quit" >&3
 ```
 
 Useful monitor commands: `sendkey <key>` (`spc`, `ret`, `dot`, `slash`,
-`shift-dot` for `>`, `down`), `mouse_move dx dy` (guest moves 2x because
+`shift-dot` for `>`, `down`, `up`, `pgup`, `ctrl-c`), `mouse_move dx dy` (guest moves 2x because
 of MOUSE_SPEED), `mouse_button 1`/`0`, `screendump file.ppm`.
 Convert screenshots with Python/PIL: `Image.open("x.ppm").save("x.png")`.
 
@@ -95,7 +95,8 @@ FAT32 writes can be verified from the host without booting:
 | Value | Defined in | Must match |
 |-------|-----------|------------|
 | Kernel slot = 256 sectors at LBA 2 | `build.sh` | loop count in `kernel/kernel.asm`, recovery LBA 258 in `boot/boot.asm` |
-| User region 10–16MB (`USER_BASE`) | `kernel/paging.h` | link address in `user/user.ld`, checks in `kernel/elf.c` |
+| User virtual base 0x40000000 (`USER_BASE`) | `kernel/paging.h` | link address in `user/user.ld` |
+| Frame pool 10–16 MB, heap 1–9 MB | `kernel/paging.h`, `kernel/memory.h` | must not overlap; both inside the 16 MB identity map |
 | Kernel selectors 0x08/0x10 | `kernel/gdt.c` | `kernel/kernel.asm` GDT, all interrupt stubs, `entry.asm` |
 | VBE info block at 0x0900 | `kernel/kernel.asm` | `vbe_info_t` read in `kernel/graphics.c` |
 | Terminal window 500x350 | `kernel/main.c` | `TERM_COLS/ROWS` in `kernel/terminal.c` |
@@ -119,10 +120,24 @@ FAT32 writes can be verified from the host without booting:
 - The build is **`-O2 -fno-strict-aliasing`**. `-fno-strict-aliasing` is
   mandatory — the FS/ELF code type-puns buffers; do not drop it.
 - All shell output goes through `print_string` (kernel/screen.c). When a
-  print sink is set (`set_print_sink`), output is redirected — that is how
-  the graphical terminal captures command output.
-- The scheduler is **cooperative** (`yield()`), no timer preemption. A
-  task that never yields or syscalls blocks everything else.
+  print sink is set (`set_print_sink`), output is redirected — in desktop
+  mode `terminal_init` installs the graphical terminal as the permanent
+  sink, so output from user programs lands in its window too.
+- The scheduler is **preemptive** (IRQ0 drives `schedule()`), and tasks
+  may still `yield()` cooperatively. Anything touching the task table
+  must save EFLAGS and `cli` (see `kernel/task.c`).
+- Filesystem calls go through the VFS wrappers, which hold one lock
+  (`fs_lock` in vfs.c). Never call a wrapper from inside a filesystem
+  driver (deadlock), and don't make FAT32 code yield. `dir_walk` is not
+  reentrant: visitors must not walk another directory.
+- `kmalloc`/`kfree` run with interrupts off (shared by all tasks and
+  reached from the Ctrl+C IRQ). Release `finddir`/`vfs_resolve` results
+  with `vfs_release()` — FAT32 hands out heap nodes.
+- User programs: any inline `int 0x80` must clobber `"memory"` (see
+  `user/syscall.h`), or GCC drops stores to buffers the kernel reads.
+- `term_grid` rows have a stride of `MAX_TERM_COLS`, not `term_cols`:
+  clear/scroll it row by row or by `sizeof`, never as a flat
+  `term_rows * term_cols` block.
 - ATA waits must keep their timeouts and 0xFF floating-bus checks: with no
   disk attached the status port reads 0xFF with BSY set forever.
 - Design docs for completed features live in `docs/superpowers/specs/`.
@@ -134,7 +149,17 @@ FAT32 writes can be verified from the host without booting:
 2. Headless graphical boot → trail is `GPQVTRKMS!DW`.
 3. Headless text boot (`down down ret`) → trail `GTRKS!`, `help` works.
 4. If you touched storage: `ls disk` / `cat disk/hello.txt` /
-   `echo x > disk/notes.txt` + host-side `mtype` check.
-5. If you touched tasks/usermode: `exec disk/app.elf` prints and exits,
-   `exec disk/crash.elf` page-faults without taking the system down,
-   `uptime` still answers afterwards.
+   `echo x > disk/notes.txt` + host-side `mtype` check; long names
+   (`touch disk/Nombre-Largo.txt`, then `mdir -i build/fat32.img ::`),
+   `cp`/`mv`, and `fsck.fat -n build/fat32.img` reports no errors (only
+   "Free cluster summary uninitialized", which is intended).
+5. If you touched tasks/usermode: `exec disk/app.elf` prints and reports
+   `[exited with code 0]`, `exec disk/args.elf a b` lists its argv,
+   `exec disk/crash.elf` reports `[crashed: Page Fault]` without taking
+   the system down, `exec disk/cp.elf readme.txt disk/docs/c.txt` +
+   `cat disk/docs/c.txt`, `exec disk/sleep.elf 2`, `exec disk/heap.elf`,
+   `exec disk/iso.elf A &` + `exec disk/iso.elf B` (both "ok", each
+   reported), `exec disk/badptr.elf` (all refused), `paging` back to
+   0 KB in use once everything ended, `exec disk/loop.elf` stops on Ctrl+C (`sendkey
+   ctrl-c`), and `uptime` still answers afterwards. Check the desktop
+   terminal too (click it first: the About window starts focused).

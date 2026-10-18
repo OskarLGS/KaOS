@@ -1,80 +1,55 @@
-# Memory Management — KMalloc & Paging
+# Memory Management — Heap, Frames & Address Spaces
 
-## KMalloc (Heap Allocator)
-
-### The Heap
-
-The heap is a region of RAM that the kernel can allocate dynamically at runtime. It starts at address `0x100000` (1 MB), safely above conventional memory.
-
-### Bump Allocator
-
-The current allocator is extremely simple — it just moves a pointer forward:
-
-```c
-static uint32_t heap_ptr = 0x100000;
-
-uint32_t kmalloc(uint32_t size) {
-    size = ALIGN_4(size);     // Align to 4-byte boundary
-    uint32_t addr = heap_ptr;
-    heap_ptr += size;
-    return addr;
-}
-```
-
-**Pros**: Fast, zero overhead.  
-**Cons**: Cannot free memory. Will be replaced with a linked-list allocator in the future.
-
-### Shell Demo
+## Physical layout
 
 ```
-> malloc
-Allocated 64 bytes at 0x00100000
-Total heap used: 64 bytes
-> malloc
-Allocated 64 bytes at 0x00100040
-Total heap used: 128 bytes
+0x00000000 - 0x000FFFFF   Kernel image (at 0x1000), BSS, stack (top 0x90000)
+0x00100000 - 0x008FFFFF   Kernel heap (kmalloc), 8 MB
+0x00A00000 - 0x00FFFFFF   Frame pool: user pages, user page tables,
+                          process page directories (1536 x 4 KB)
+framebuffer (VBE)         Mapped at its own physical address
 ```
 
----
+All of 0-16 MB is identity-mapped **supervisor-only** in every address
+space, so the kernel can reach its heap and every frame by physical
+address no matter which process is running.
 
-## Paging (Virtual Memory)
+## Kernel heap (kernel/memory.c)
 
-### What is Paging?
+First-fit free list with block splitting and coalescing (`kmalloc`,
+`kfree`). Both run with interrupts off: the heap is shared by every task
+and is also reached from IRQ context (Ctrl+C closes a task's files).
+`malloc`/`free` shell commands demo it.
 
-Paging allows the CPU to translate **virtual addresses** (what the code sees) into **physical addresses** (actual RAM). This is the foundation for process isolation.
+## Frame allocator (kernel/paging.c)
 
-### x86 Paging Structure
+A bitmap over the pool (`frame_alloc` / `frame_free`, interrupt-safe).
+Frames are zeroed when handed out, so a process never sees another
+process's old data. `paging` shows pool usage.
 
-```
-Virtual Address (32 bits)
-├── Directory Index (bits 31-22) → selects Page Directory entry
-├── Table Index    (bits 21-12) → selects Page Table entry
-└── Offset         (bits 11-0)  → offset within the 4KB page
-```
+## Address spaces (kernel/paging.c)
 
-- **Page Directory**: 1024 entries, each pointing to a Page Table.
-- **Page Table**: 1024 entries, each mapping a 4 KB page.
-- **Total coverage per table**: 4 MB (1024 × 4 KB).
+Each user program gets its own page directory (`vmm_create`):
 
-### Identity Mapping
+| Virtual range | Mapping |
+|---------------|---------|
+| 0 - 16 MB, framebuffer | Shared kernel entries (same page tables as the kernel's directory), no User bit |
+| `0x40000000 - 0x40800000` | This process only: code/data at `USER_BASE`, heap after the image, 64 KB stack under `USER_STACK_TOP` (one unmapped guard page between heap limit and stack) |
 
-We map the first 4 MB so that virtual address = physical address. This means existing code continues to work without changes.
+| Function | Purpose |
+|----------|---------|
+| `vmm_map_user` / `vmm_unmap_user` | Map a zeroed frame at a user page / release it |
+| `vmm_write` | Copy into another process's pages via their frames (ELF loading, argv) without switching CR3 |
+| `vmm_user_range_ok` | Every page of a range mapped with the User bit — syscall pointer validation |
+| `vmm_switch` | Load a directory into CR3 (0 = kernel's) |
+| `vmm_destroy` | Free all user frames, user page tables and the directory |
 
-```c
-for (int i = 0; i < 1024; i++) {
-    first_page_table[i] = (i * 0x1000) | 3; // Present + R/W
-}
-page_directory[0] = ((uint32_t)first_page_table) | 3;
-```
+`schedule()` loads the next task's directory before switching stacks
+(kernel tasks use the kernel's). Kernel stacks live in the shared part,
+so the switch is seamless. A stopped program's address space is freed by
+`task_reap()` from the shell task — never from an IRQ, because a program
+killed by Ctrl+C keeps running on its directory until the next switch.
 
-### Enabling Paging
-
-```c
-__asm__("mov %0, %%cr3" : : "r"(page_directory)); // Load PD
-cr0 |= 0x80000000;                                  // Set PG bit
-__asm__("mov %0, %%cr0" : : "r"(cr0));              // Enable
-```
-
-### Key Files
-- `kernel/memory.c/h` — Heap allocator
-- `kernel/paging.c/h` — Page tables and paging setup
+## Key Files
+- `kernel/memory.c/h` — Kernel heap
+- `kernel/paging.c/h` — Paging, frame pool, per-process address spaces

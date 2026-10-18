@@ -1,9 +1,5 @@
 // Interactive Ring 3 program: asks for your name and greets you.
 // Demonstrates SYS_READ (blocking keyboard input) from user mode.
-//
-// Note: pass string literals straight to sys_write. A `char buf[] = "..."`
-// local relies on the compiler synthesising the initialiser (a memcpy or
-// inline stores) which is unreliable in this freestanding -O2 build.
 #include "syscall.h"
 
 static int slen(const char* s) {
@@ -12,7 +8,7 @@ static int slen(const char* s) {
     return n;
 }
 
-void _start(void) {
+int main(void) {
     char name[64];
 
     sys_write("What's your name? ", 18);
@@ -23,7 +19,5 @@ void _start(void) {
     sys_write("Hello, ", 7);
     sys_write(name, slen(name));
     sys_write("! Welcome to Ring 3.\n", 21);
-
-    sys_exit();
-    for (;;);
+    return 0;
 }

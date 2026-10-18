@@ -5,39 +5,48 @@ The KaOS shell is a simple command-line interpreter. It receives text input from
 ## How Input Flows
 
 ```
-Keyboard IRQ → keyboard_callback()
-    → Characters accumulate in key_buffer[]
-    → User presses Enter
-    → shell_handler(key_buffer) is called
-    → Buffer is cleared
+Keyboard IRQ → ring buffer (keyboard.c)
+    → shell loop: text mode in main.c, desktop via terminal_handle_key
+    → shell_input_key(c)          line editor shared by both consoles
+        printable  → append to the line, echo
+        Backspace  → erase last char ("\b \b")
+        Up / Down  → walk the history (the half-typed line is kept as a
+                     draft and comes back when you go down past the newest)
+        Enter      → add to history, shell_handler(line)
 ```
 
-## Available Commands
+While a program started with `exec` runs in the foreground, the shell
+loops stop reading keys (the program's SYS_READ gets them) and
+`shell_poll()` prints the exit report and the prompt when it ends.
 
-| Command   | Description |
-|-----------|-------------|
-| `help`    | List all available commands |
-| `clear`   | Clear the screen |
-| `info`    | Show OS name and mode |
-| `version` | Show KaBooM and KaOS versions |
-| `uptime`  | Seconds since boot (PIT timer) |
-| `malloc`  | Allocate 64 bytes and show address |
-| `paging`  | Show paging status and Page Directory address |
-| `halt`    | Halt the CPU |
+History keeps the last 16 distinct commands (`HISTORY_SIZE`), skipping
+immediate repeats. The graphical terminal additionally scrolls back with
+PgUp/PgDn (see graphics.md).
+
+## Commands
+
+`help` lists everything registered. Commands live in modules under
+`kernel/commands/` (`cmd_fs.c`, `cmd_mem.c`, `cmd_sys.c`, `cmd_task.c`).
 
 ## Adding a New Command
 
-1. Open `kernel/shell.c`
-2. Add a new `else if` block:
-
 ```c
-} else if (strcmp(input, "mycommand") == 0) {
-    print_string("Hello from my command!\n");
+static void cmd_hello(char* args) {   // args = text after the name
+    print_string("Hello!\n");
+}
+
+void init_cmd_sys() {
+    ...
+    register_command("hello", "Say hello", cmd_hello);
 }
 ```
 
-3. Add it to the `help` output.
-4. Rebuild with `wsl bash build.sh`.
+Up to `MAX_COMMANDS` (32); names up to 15 characters. Compose multi-part
+output into one buffer and print it once — `print_string` is atomic, so
+output from a running program can't interleave inside it.
+
+`clear` calls `shell_clear()`: the graphical terminal registers a hook
+(`shell_set_clear_hook`) so it clears its own window.
 
 ## Utility Functions
 

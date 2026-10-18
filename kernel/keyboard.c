@@ -1,6 +1,7 @@
 #include "keyboard.h"
 #include "ports.h"
 #include "screen.h"
+#include "task.h"
 
 #define SCAN_ENTER 0x1C
 #define SCAN_BACKSPACE 0x0E
@@ -67,12 +68,45 @@ const char scancode_shift[] = {
 
 #define SCAN_LSHIFT 0x2A
 #define SCAN_RSHIFT 0x36
+#define SCAN_CTRL   0x1D   // Left Ctrl (right Ctrl is E0-prefixed, same code)
+#define SCAN_C      0x2E
 
 static int shift_down = 0;
+static int ctrl_down = 0;
+static int extended = 0;   // Previous byte was the 0xE0 prefix
+
+// Second byte of E0-prefixed make codes -> KEY_* code (0 = ignore)
+static char extended_key(uint8_t scancode) {
+    switch (scancode) {
+        case 0x48: return KEY_UP;
+        case 0x50: return KEY_DOWN;
+        case 0x4B: return KEY_LEFT;
+        case 0x4D: return KEY_RIGHT;
+        case 0x49: return KEY_PGUP;
+        case 0x51: return KEY_PGDN;
+        case 0x1C: return '\n';   // Keypad Enter
+        default:   return 0;
+    }
+}
 
 static void keyboard_callback(struct registers regs) {
     (void)regs;
     uint8_t scancode = port_byte_in(0x60);
+
+    if (scancode == 0xE0) { extended = 1; return; }
+    if (extended) {
+        extended = 0;
+        uint8_t code = scancode & 0x7F;
+        if (code == SCAN_CTRL) {                  // Right Ctrl
+            ctrl_down = !(scancode & 0x80);
+            return;
+        }
+        if (code == SCAN_LSHIFT || code == SCAN_RSHIFT) return; // Fake shifts
+        if (scancode & 0x80) return;              // Extended key release
+        char k = extended_key(scancode);
+        if (k) ring_buffer[head++] = k;
+        return;
+    }
 
     // Track Shift state (bit 7 set = key release)
     if (scancode == SCAN_LSHIFT || scancode == SCAN_RSHIFT) {
@@ -81,6 +115,17 @@ static void keyboard_callback(struct registers regs) {
     }
     if (scancode == (SCAN_LSHIFT | 0x80) || scancode == (SCAN_RSHIFT | 0x80)) {
         shift_down = 0;
+        return;
+    }
+
+    if (scancode == SCAN_CTRL)          { ctrl_down = 1; return; }
+    if (scancode == (SCAN_CTRL | 0x80)) { ctrl_down = 0; return; }
+
+    // Ctrl+C: stop the foreground program. Done here in the IRQ so it
+    // works even when the program never reads input (an endless loop).
+    if (ctrl_down && scancode == SCAN_C) {
+        int fg = get_foreground();
+        if (fg) kill_with(fg, EXIT_INTERRUPTED);
         return;
     }
 
