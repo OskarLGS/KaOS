@@ -24,6 +24,8 @@ typedef struct fs_node * (*finddir_type_t)(struct fs_node*, char *name);
 typedef int (*create_type_t)(struct fs_node*, char *name);
 typedef int (*unlink_type_t)(struct fs_node*, char *name);
 typedef int (*mkdir_type_t)(struct fs_node*, char *name);
+typedef int (*rename_type_t)(struct fs_node* src_dir, char* src_name,
+                             struct fs_node* dst_dir, char* dst_name);
 
 typedef struct fs_node {
     char name[128];       // The requested name.
@@ -43,6 +45,7 @@ typedef struct fs_node {
     create_type_t create;  // Make an empty child entry (directories).
     unlink_type_t unlink;  // Remove a child entry (directories).
     mkdir_type_t mkdir;    // Make an empty subdirectory (directories).
+    rename_type_t rename;  // Move/rename a child within this filesystem.
     struct fs_node *ptr;  // Used by mountpoints and symlinks.
 } fs_node_t;
 
@@ -64,10 +67,15 @@ fs_node_t *finddir_fs(fs_node_t *node, char *name);
 int create_fs(fs_node_t *node, char *name);
 int unlink_fs(fs_node_t *node, char *name);
 int mkdir_fs(fs_node_t *node, char *name);
+// Move `src_dir/src_name` to `dst_dir/dst_name` without copying data.
+// VFS_EXDEV if the two directories are on different filesystems.
+int rename_fs(fs_node_t *src_dir, char *src_name, fs_node_t *dst_dir, char *dst_name);
 
 // create/mkdir return 0 on success, -1 if it exists/unsupported/disk
 // error, VFS_EBADNAME if the name does not fit the filesystem (8.3).
 #define VFS_EBADNAME (-3)
+#define VFS_EXDEV    (-4)   // rename across filesystems: copy + delete instead
+#define VFS_EINVAL   (-5)   // e.g. moving a directory into itself
 
 #define VFS_PATH_MAX 128
 

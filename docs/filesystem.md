@@ -53,28 +53,50 @@ layout, no partition table).
 - Semantics are truncating: `file_size = offset + written` — `echo`
   always rewrites whole files. Freed tail clusters are not reclaimed.
 
-### Creating / deleting (kernel/fat32.c)
-- `fat32_create(dir, name)` — find a free 32-byte directory slot (`0x00`
-  end or `0xE5` deleted), or allocate+link a new directory cluster if the
-  chain is full; write an 8.3 entry (attr `0x20`, cluster 0, size 0).
-- `fat32_mkdir(dir, name)` — allocate and zero one cluster, write `.`
-  (itself) and `..` (parent; cluster 0 when the parent is the root, which
-  `finddir` maps back to the root cluster), then add a 0x10 entry.
-- `fat32_delete(dir, name)` — free the cluster chain and mark the entry
-  `0xE5`. Directories only when empty (else returns -2).
-- `add_entry` puts a new entry in the first free slot, growing the
-  directory by a fully zeroed cluster when it is full.
-- `name_to_83` converts "notes.txt" → "NOTES   TXT". `valid_83` rejects
-  names that do not fit (create/mkdir return `VFS_EBADNAME`) — a longer
-  name would be truncated and never found again.
-- Wired through the VFS `create`/`unlink`/`mkdir` ops on directory nodes.
-- On mount, the FSInfo free-cluster count and next-free hint are set to
-  "unknown" (0xFFFFFFFF): KaOS does not maintain them, so other systems
-  recompute them.
+### Directories and long names (kernel/fat32.c)
 
-### Not supported yet
-Long filenames (LFN). A write sets the file size to the end of that write (fine
-for sequential writes from offset 0; there is no append-in-the-middle).
+Every directory operation goes through **`dir_walk`**: it visits each
+live entry in disk order and hands over the short entry, its position,
+the positions of its LFN entries and its name — the long name when a
+valid LFN run precedes it, else the 8.3 display name.
+
+**Long file names (LFN)**: a run of attr-0x0F entries before the short
+entry, last part first (order number | 0x40), 13 UCS-2 characters each,
+plus a checksum of the 8.3 name. `dir_walk` accepts a run only if the
+order numbers count down to 1 without gaps and every checksum matches
+the short entry, so stale fragments are ignored. Characters outside
+ASCII show as `?`. Names are up to 127 characters.
+
+| Operation | What it does |
+|-----------|--------------|
+| lookup (`finddir`) | Case-insensitive match on the long name **or** the 8.3 alias (`NOTAS-~1.MAR`) |
+| `fat32_create` | Plain one-case 8.3 names → short entry only (shown upper case). Anything else → alias `BASIS~N.EXT` (unique, Windows scheme) + LFN entries |
+| `add_entry` | Finds `parts + 1` *consecutive* free slots (`0x00`/`0xE5`), growing the directory by zeroed clusters if needed |
+| `fat32_mkdir` | Zeroed cluster with `.` and `..` (cluster 0 when the parent is the root; `finddir` maps it back), then `add_entry` with attr 0x10 |
+| `fat32_delete` | Frees the chain and marks the short entry **and its LFN entries** `0xE5`. Directories only when empty (-2) |
+| `fat32_rename` | Adds the entry (same cluster, size, timestamps) under the new name/directory, removes the old one; a moved directory's `..` is updated. Refuses moving a directory into itself (`VFS_EINVAL`) |
+
+Invalid names (control chars, `\ / : * ? " < > |`, trailing dot/space,
+over 127 chars) return `VFS_EBADNAME`.
+
+On mount, the FSInfo free-cluster count and next-free hint are set to
+"unknown" (0xFFFFFFFF): KaOS does not maintain them, so other systems
+recompute them.
+
+### Locking
+
+The ATA driver and FAT32 code are not reentrant, and the shell runs
+preemptibly. Every VFS wrapper (`read_fs`, `finddir_fs`, `create_fs`,
+`rename_fs`, ...) takes one filesystem lock; waiters `yield()`. A holder
+never yields inside an operation, and FAT32's internal static buffers
+rely on this serialization.
+
+### Limits
+A write sets the file size to the end of that write (fine for
+sequential writes from offset 0; no append-in-the-middle). No NT
+lower-case flags: a one-case 8.3 name is stored upper case. The shell
+splits arguments on spaces, so names with spaces are readable but can't
+be typed in commands.
 
 ## Shell usage
 
@@ -87,4 +109,11 @@ exec disk/app.elf                    (load + run ELF from disk)
 mkdir disk/proy/kaos                 (parent must exist)
 cat disk/proy/kaos/../../hello.txt   (any depth, . and .. work on FAT32)
 rm disk/proy                         (files, or directories once empty)
+touch disk/Notas-del-Proyecto.txt    (long name; alias NOTAS-~1.TXT)
+cp readme.txt disk/proy               (into a directory, any filesystem)
+mv disk/proy/readme.txt disk/Leeme.txt   (rename/move, no data copied)
 ```
+
+`cp`/`mv` with a directory as target keep the source name. `mv` within
+FAT32 is a rename; between RAMFS and FAT32 it copies then deletes the
+source (RAMFS can't delete, so the original stays and you are told).

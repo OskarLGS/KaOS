@@ -6,7 +6,7 @@
 #include "vfs.h"
 
 #define MAX_ENTRIES   64
-#define NAME_MAX      32
+#define NAME_MAX      128   // FAT32 long names are up to 127 chars
 #define ROW_H         12
 #define HEADER_H      18
 #define FOOTER_H      14
@@ -196,18 +196,25 @@ static void paint_list(window_t* w) {
             draw_rect(w->x + 2, y - 2, w->w - 4, ROW_H,
                       w->focused ? COL_SELECT : COL_SELECT_BG);
 
+        char size[16];
+        size[0] = '\0';
+        if (!e->is_dir) format_size(e->size, size);
+
+        // Long names are cut with "~" to leave room for the size column
+        int room = (w->w - 2 * PAD) / 8 - (size[0] ? strlen(size) + 1 : 0);
         char label[NAME_MAX + 2];
         strcpy(label, e->name);
         if (e->is_dir) append(label, '/');
+        if (room > 1 && strlen(label) > room) {
+            label[room - 1] = '~';
+            label[room] = '\0';
+        }
         draw_string(w->x + PAD, y, label,
                     i == selected ? 0xFFFFFF : (e->is_dir ? COL_DIR : COL_TEXT));
 
-        if (!e->is_dir) {
-            char size[16];
-            format_size(e->size, size);
+        if (size[0])
             draw_string(w->x + w->w - PAD - strlen(size) * 8, y, size,
                         i == selected ? 0xFFFFFF : COL_DIM);
-        }
     }
     if (count == 0)
         draw_string(w->x + PAD, y0, "(empty or not found)", COL_DIM);

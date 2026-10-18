@@ -126,6 +126,10 @@ FAT32 writes can be verified from the host without booting:
 - The scheduler is **preemptive** (IRQ0 drives `schedule()`), and tasks
   may still `yield()` cooperatively. Anything touching the task table
   must save EFLAGS and `cli` (see `kernel/task.c`).
+- Filesystem calls go through the VFS wrappers, which hold one lock
+  (`fs_lock` in vfs.c). Never call a wrapper from inside a filesystem
+  driver (deadlock), and don't make FAT32 code yield. `dir_walk` is not
+  reentrant: visitors must not walk another directory.
 - `kmalloc`/`kfree` run with interrupts off (shared by all tasks and
   reached from the Ctrl+C IRQ). Release `finddir`/`vfs_resolve` results
   with `vfs_release()` — FAT32 hands out heap nodes.
@@ -145,7 +149,10 @@ FAT32 writes can be verified from the host without booting:
 2. Headless graphical boot → trail is `GPQVTRKMS!DW`.
 3. Headless text boot (`down down ret`) → trail `GTRKS!`, `help` works.
 4. If you touched storage: `ls disk` / `cat disk/hello.txt` /
-   `echo x > disk/notes.txt` + host-side `mtype` check.
+   `echo x > disk/notes.txt` + host-side `mtype` check; long names
+   (`touch disk/Nombre-Largo.txt`, then `mdir -i build/fat32.img ::`),
+   `cp`/`mv`, and `fsck.fat -n build/fat32.img` reports no errors (only
+   "Free cluster summary uninitialized", which is intended).
 5. If you touched tasks/usermode: `exec disk/app.elf` prints and reports
    `[exited with code 0]`, `exec disk/args.elf a b` lists its argv,
    `exec disk/crash.elf` reports `[crashed: Page Fault]` without taking

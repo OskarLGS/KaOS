@@ -89,7 +89,8 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
   codes reported by the shell, Ctrl+C stops the foreground program,
   several programs at once (`exec disk/sleep.elf 5 &`).
 - **Filesystems** — VFS + RAMFS + FAT32 (read/write, persists across
-  reboots), multi-level paths (`cat disk/docs/readme.txt`).
+  reboots), multi-level paths (`cat disk/docs/readme.txt`), long file
+  names (LFN), `cp`/`mv`.
 - **Graphical desktop** — double-buffered window manager: dragging,
   resizing, focus, minimize, close, taskbar with per-window buttons, a
   clock and a start menu; "About", "Clock" and "Files" (VFS browser)
@@ -111,6 +112,7 @@ ps        List running tasks             kill      Stop a task by PID
 exec      Run an ELF program in Ring 3 (exec disk/args.elf hola mundo)
 touch     Create an empty file            rm        Delete a file / empty dir
 mkdir     Create a directory (mkdir disk/docs/sub)
+cp        Copy a file                    mv        Move / rename
 spin      Preemption demo (CPU-bound task)
 ```
 

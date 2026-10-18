@@ -1,12 +1,38 @@
 #include "vfs.h"
 #include "memory.h"
 #include "util.h"
+#include "task.h"
 
 fs_node_t *fs_root = 0; // The root of the filesystem.
 
+// One filesystem operation at a time. The ATA driver and the FAT32 code
+// are not reentrant: without this, the shell (preemptible) could be cut
+// off mid-sector by a program's syscall doing disk I/O of its own.
+// Waiters yield; a holder never yields inside a filesystem operation.
+static volatile int fs_busy = 0;
+
+static void fs_lock() {
+    while (1) {
+        uint32_t eflags;
+        __asm__ __volatile__("pushf; pop %0; cli" : "=r"(eflags) :: "memory");
+        int got = !fs_busy;
+        if (got) fs_busy = 1;
+        if (eflags & 0x200) __asm__ __volatile__("sti" ::: "memory");
+        if (got) return;
+        yield();
+    }
+}
+
+static void fs_unlock() {
+    fs_busy = 0;
+}
+
 uint32_t read_fs(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer) {
     if (node->read != 0) {
-        return node->read(node, offset, size, buffer);
+        fs_lock();
+        uint32_t r = node->read(node, offset, size, buffer);
+        fs_unlock();
+        return r;
     } else {
         return 0;
     }
@@ -14,7 +40,10 @@ uint32_t read_fs(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffe
 
 uint32_t write_fs(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer) {
     if (node->write != 0) {
-        return node->write(node, offset, size, buffer);
+        fs_lock();
+        uint32_t r = node->write(node, offset, size, buffer);
+        fs_unlock();
+        return r;
     } else {
         return 0;
     }
@@ -34,7 +63,10 @@ void close_fs(fs_node_t *node) {
 
 struct dirent *readdir_fs(fs_node_t *node, uint32_t index) {
     if ((node->flags & 0x7) == FS_DIRECTORY && node->readdir != 0) {
-        return node->readdir(node, index);
+        fs_lock();
+        struct dirent *r = node->readdir(node, index);
+        fs_unlock();
+        return r;
     } else {
         return 0;
     }
@@ -42,7 +74,10 @@ struct dirent *readdir_fs(fs_node_t *node, uint32_t index) {
 
 fs_node_t *finddir_fs(fs_node_t *node, char *name) {
     if ((node->flags & 0x7) == FS_DIRECTORY && node->finddir != 0) {
-        return node->finddir(node, name);
+        fs_lock();
+        fs_node_t *r = node->finddir(node, name);
+        fs_unlock();
+        return r;
     } else {
         return 0;
     }
@@ -50,23 +85,42 @@ fs_node_t *finddir_fs(fs_node_t *node, char *name) {
 
 int create_fs(fs_node_t *node, char *name) {
     if ((node->flags & 0x7) == FS_DIRECTORY && node->create != 0) {
-        return node->create(node, name);
+        fs_lock();
+        int r = node->create(node, name);
+        fs_unlock();
+        return r;
     }
     return -1;
 }
 
 int unlink_fs(fs_node_t *node, char *name) {
     if ((node->flags & 0x7) == FS_DIRECTORY && node->unlink != 0) {
-        return node->unlink(node, name);
+        fs_lock();
+        int r = node->unlink(node, name);
+        fs_unlock();
+        return r;
     }
     return -1;
 }
 
 int mkdir_fs(fs_node_t *node, char *name) {
     if ((node->flags & 0x7) == FS_DIRECTORY && node->mkdir != 0) {
-        return node->mkdir(node, name);
+        fs_lock();
+        int r = node->mkdir(node, name);
+        fs_unlock();
+        return r;
     }
     return -1;
+}
+
+int rename_fs(fs_node_t *src_dir, char *src_name, fs_node_t *dst_dir, char *dst_name) {
+    if ((src_dir->flags & 0x7) != FS_DIRECTORY || (dst_dir->flags & 0x7) != FS_DIRECTORY)
+        return -1;
+    if (!src_dir->rename || src_dir->rename != dst_dir->rename) return VFS_EXDEV;
+    fs_lock();
+    int r = src_dir->rename(src_dir, src_name, dst_dir, dst_name);
+    fs_unlock();
+    return r;
 }
 
 void vfs_release(fs_node_t *node) {

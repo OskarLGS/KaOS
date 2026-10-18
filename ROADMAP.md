@@ -2,7 +2,7 @@
 
 From bare metal to a full operating system.
 
-> Estado a 2026-10: **Fases 1–6 completas**; Fase 7 en progreso.
+> Estado a 2026-10: **Fases 1–7 completas**; siguiente: Fase 8.
 > Documentación por subsistema en [docs/](docs/README.md); guía de
 > build/test en [AGENTS.md](AGENTS.md).
 
@@ -96,7 +96,7 @@ From bare metal to a full operating system.
 
 ---
 
-## 🟤 Fase 7: Almacenamiento Completo (en progreso)
+## 🟤 Fase 7: Almacenamiento Completo ✅
 ### Meta: Un disco que se siente como un disco.
 - [x] **Crear ficheros**: `touch disk/nuevo.txt` y `echo texto > nuevo`
       (entrada de directorio 8.3 nueva). VFS con `create`/`unlink`.
@@ -106,13 +106,18 @@ From bare metal to a full operating system.
       directorios vacíos. Nombres que no caben en 8.3 se rechazan.
 - [x] **Liberar clusters al truncar**: reescribir un fichero más corto
       libera la cola de la cadena (verificado con `fsck.fat`).
-- [ ] **Nombres largos (LFN)**: Leer (y luego escribir) entradas UCS-2.
+- [x] **Nombres largos (LFN)**: lectura y escritura de entradas UCS-2
+      (checksum, alias `NOMBRE~N.EXT`), búsqueda por nombre largo o alias,
+      hasta 127 caracteres; verificado con mtools y `fsck.fat`.
 - [x] **Rutas multinivel**: `vfs_resolve` recorre cualquier profundidad
       (`cat disk/docs/sub/leeme.txt`); lo usan la shell y `SYS_OPEN`.
 - [x] **RTC (CMOS)**: Fecha/hora real (`date`), timestamps de creación y
       modificación en FAT32 y reloj del escritorio.
-- [ ] **cp / mv** entre RAMFS y disco (`cp.elf` ya copia en espacio de
-      usuario; faltan `mv` y comandos integrados).
+- [x] **cp / mv** integrados: `mv` renombra/mueve sin copiar datos en
+      FAT32 (actualiza `..` de directorios movidos) y copia+borra entre
+      sistemas de ficheros; destino directorio = mismo nombre dentro.
+- [x] **Bloqueo del sistema de ficheros**: un lock en el VFS serializa el
+      acceso al driver ATA/FAT32 bajo preempción.
 
 ---
 
