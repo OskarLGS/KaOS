@@ -15,8 +15,6 @@
 #include "terminal.h"
 #include "rtc.h"
 
-static char key_line_buffer[256];
-
 // ─── Debug helper ─────────────────────────────────────────────────────────────
 // Port 0xE9 is logged by VirtualBox/Bochs to the host debug log (VBox.log).
 static inline void dbg(char c) {
@@ -175,31 +173,13 @@ void kernel_main() {
 
     // Text-mode shell loop
     print_string("> ");
-    key_line_buffer[0] = '\0';
 
     while(1) {
         // Stop consuming keys while a foreground program owns the keyboard
         // (its SYS_READ reads them instead). Still yield so it runs.
         shell_poll();
         char c = (get_foreground() == 0) ? keyboard_get_char() : 0;
-        if (c != 0) {
-            if (c == '\n') {
-                print_string("\n");
-                shell_handler(key_line_buffer);
-                key_line_buffer[0] = '\0';
-            } else if (c == '\b') {
-                if (strlen(key_line_buffer) > 0) {
-                    backspace(key_line_buffer);
-                    print_string("\b \b");
-                }
-            } else {
-                if (strlen(key_line_buffer) < 254) {
-                    char s[2] = {c, '\0'};
-                    append(key_line_buffer, c);
-                    print_string(s);
-                }
-            }
-        }
+        if (c != 0) shell_input_key(c);
         yield();
     }
 }

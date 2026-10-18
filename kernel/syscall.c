@@ -127,6 +127,7 @@ void syscall_handler(struct registers *r) {
                     if (n > 0) { n--; print_string("\b \b"); }
                     continue;
                 }
+                if ((uint8_t)c < 0x20 && c != '\t') continue; // Arrows, PgUp...
                 buf[n++] = c;
                 char s[2] = { c, '\0' };
                 print_string(s); // echo

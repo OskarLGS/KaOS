@@ -58,12 +58,14 @@ A 60x38 character grid bound to the "Terminal" window:
 
 1. Keystrokes reach it from the desktop loop **only while its window is
    focused** (`wm_get_focused()`).
-2. On Enter, the line runs through the normal `shell_handler`, with a
-   **print sink** installed (`set_print_sink` in screen.c): every
-   `print_string` the command makes lands in the grid instead of the
-   fullscreen console.
-3. `terminal_paint` draws the grid relative to the window position; the
-   grid scrolls itself with `memory_copy`.
+2. Keys go to the shell's shared line editor (`shell_input_key`: history
+   with ↑/↓). The terminal is the permanent **print sink**
+   (`set_print_sink` in screen.c): every `print_string` — commands, user
+   programs, exception reports — lands in the grid.
+3. `terminal_paint` draws the grid relative to the window position. Rows
+   scrolling off the top go to a 200-line scroll-back ring; **PgUp/PgDn**
+   move the view half a screen (a `[-N]` tag shows how far back), and
+   any new output snaps back to the live view.
 
-`clear` is intercepted and clears the grid (the shell's clear resets the
-fullscreen console, meaningless inside a window).
+`clear` clears the grid and the scroll-back (the terminal registers it as
+the shell's clear hook).

@@ -90,8 +90,9 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
   reboots), multi-level paths (`cat disk/docs/readme.txt`).
 - **Graphical desktop** — double-buffered window manager: dragging,
   focus, minimize, close, taskbar with per-window buttons and a start
-  menu, live "About" window, and a full **graphical terminal** running
-  the shell.
+  menu, live "About" and "Clock" windows, and a full **graphical
+  terminal** running the shell (with scroll-back on PgUp/PgDn).
+- **Shell** — command history with ↑/↓ in text mode and on the desktop.
 
 ## Shell Commands
 

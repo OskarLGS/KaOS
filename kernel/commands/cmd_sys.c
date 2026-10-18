@@ -6,12 +6,7 @@
 
 static void cmd_clear(char* args) {
     (void)args;
-    if (is_graphical_mode()) {
-        clear_screen(0x1E1E1E);
-        swap_buffers();
-    } else {
-        clear_vga_text();
-    }
+    shell_clear();
 }
 
 static void cmd_info(char* args) {

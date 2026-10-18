@@ -62,8 +62,9 @@ From bare metal to a full operating system.
       barra de tareas, leídas del RTC.
 - [ ] **App: Visor de ficheros** — navegar el VFS con el ratón
       (estrena `readdir` gráfico y doble clic).
-- [ ] **Scroll-back en la terminal** y historial de comandos (flechas ↑/↓,
-      requiere emitir teclas extendidas desde el driver).
+- [x] **Scroll-back en la terminal** (RePág/AvPág, 200 líneas) e
+      historial de comandos (↑/↓) en ambos modos: el driver emite teclas
+      extendidas (prefijo 0xE0) y la shell tiene un editor de línea único.
 
 ---
 

@@ -83,7 +83,7 @@ echo "quit" >&3
 ```
 
 Useful monitor commands: `sendkey <key>` (`spc`, `ret`, `dot`, `slash`,
-`shift-dot` for `>`, `down`), `mouse_move dx dy` (guest moves 2x because
+`shift-dot` for `>`, `down`, `up`, `pgup`, `ctrl-c`), `mouse_move dx dy` (guest moves 2x because
 of MOUSE_SPEED), `mouse_button 1`/`0`, `screendump file.ppm`.
 Convert screenshots with Python/PIL: `Image.open("x.ppm").save("x.png")`.
 
