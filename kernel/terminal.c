@@ -134,15 +134,22 @@ static void terminal_paint(window_t* self) {
 void terminal_on_resize(window_t* w) {
     if (!w || !w->visible) return;
 
-    // 1. Serialize current grid into reflow_buf
+    // 1. Serialize the grid up to the cursor into reflow_buf. Rows above
+    // the cursor lose trailing blanks; the cursor row is kept exactly up to
+    // the cursor (so "> " keeps its space) and gets no newline — reprinting
+    // then leaves the cursor where the user was typing, not below the
+    // empty rows of the old window.
     int pos = 0;
-    for (int r = 0; r < term_rows; r++) {
-        int last = -1;
-        for (int c = 0; c < term_cols; c++)
-            if (term_grid[r][c] != ' ') last = c;
+    for (int r = 0; r <= term_cy; r++) {
+        int last = term_cx - 1;
+        if (r < term_cy) {
+            last = -1;
+            for (int c = 0; c < term_cols; c++)
+                if (term_grid[r][c] != ' ') last = c;
+        }
         for (int c = 0; c <= last && pos < (int)sizeof(reflow_buf) - 2; c++)
             reflow_buf[pos++] = term_grid[r][c];
-        if (pos < (int)sizeof(reflow_buf) - 1)
+        if (r < term_cy && pos < (int)sizeof(reflow_buf) - 1)
             reflow_buf[pos++] = '\n';
     }
     reflow_buf[pos] = '\0';

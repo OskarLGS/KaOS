@@ -57,7 +57,8 @@ From bare metal to a full operating system.
 - [x] **Terminal gráfica**: La shell completa dentro de una ventana.
 - [x] **Z-order real**: Traer al frente la ventana enfocada al hacer clic,
       restaurar desde taskbar o abrir desde el menú inicio.
-- [ ] **Redimensionar ventanas**: Arrastrando el borde inferior-derecho.
+- [x] **Redimensionar ventanas**: bordes izquierdo/derecho/inferior y
+      esquinas; la terminal recoloca su texto al soltar.
 - [x] **App: Reloj** — ventana Clock (hora grande + fecha) y hora en la
       barra de tareas, leídas del RTC.
 - [ ] **App: Visor de ficheros** — navegar el VFS con el ratón

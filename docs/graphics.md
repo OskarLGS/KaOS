@@ -48,6 +48,11 @@ draws the client area each frame.
   focused window's button minimizes it.
 - Input: `wm_on_mouse_move/click` handle dragging (title bar), focus,
   close button, taskbar and menu — checked in that priority order.
+- **Resize**: drag the left, right or bottom edge or a bottom corner
+  (within `RESIZE_ZONE` px), down to `min_w`/`min_h`. On release the
+  window's `on_resize` runs — the terminal recomputes its rows/columns
+  and reflows the text up to the cursor, so the prompt stays where you
+  were typing.
 
 The desktop loop (`run_desktop` in main.c) polls mouse/keyboard, redraws
 on any change and once per second (for live stats like the About window).
