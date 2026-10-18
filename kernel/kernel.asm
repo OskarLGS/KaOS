@@ -93,7 +93,7 @@ load_loop:
 
 .continue:
     inc dword [sectors_loaded]
-    cmp dword [sectors_loaded], 256
+    cmp dword [sectors_loaded], KERNEL_SECTORS   ; From build.sh (-D)
     jl load_loop
 
     ; Write selection to 0x0000:0x0914 (using ES=0)

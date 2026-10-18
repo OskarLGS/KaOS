@@ -26,7 +26,8 @@ Outputs:
   afterwards (user data written from inside KaOS survives rebuilds; delete
   it to start fresh).
 
-The script fails if the kernel outgrows its 256-sector slot (128KB).
+The script fails if the kernel outgrows its slot (`KERNEL_SECTORS` at the
+top of build.sh, 512 sectors = 256KB).
 Current size is printed on every build (~35KB used).
 
 ## Run in QEMU
@@ -96,7 +97,7 @@ FAT32 writes can be verified from the host without booting:
 
 | Value | Defined in | Must match |
 |-------|-----------|------------|
-| Kernel slot = 256 sectors at LBA 2 | `build.sh` | loop count in `kernel/kernel.asm`, recovery LBA 258 in `boot/boot.asm` |
+| Kernel slot `KERNEL_SECTORS` at LBA 2 | `build.sh` (passed to NASM with `-D`) | used by `kernel/kernel.asm` (load loop) and `boot/boot.asm` (recovery LBA); must stay ≤ 640 so the load (at 0x1000) stays below the VBR at 0x90000 |
 | User virtual base 0x40000000 (`USER_BASE`) | `kernel/paging.h` | link address in `user/user.ld` |
 | Frame pool 10–16 MB, heap 1–9 MB | `kernel/paging.h`, `kernel/memory.h` | must not overlap; both inside the 16 MB identity map |
 | Kernel selectors 0x08/0x10 | `kernel/gdt.c` | `kernel/kernel.asm` GDT, all interrupt stubs, `entry.asm` |
