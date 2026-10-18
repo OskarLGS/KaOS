@@ -44,7 +44,7 @@ static uint8_t mouse_read() {
 
 // ─── IRQ12 handler ───────────────────────────────────────────────────────────
 
-static void mouse_irq_handler(struct registers regs) {
+static void mouse_irq_handler(struct registers* regs) {
     (void)regs;
 
     // Drain everything the controller has for us. Packets can pile up while

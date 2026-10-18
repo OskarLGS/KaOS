@@ -85,26 +85,26 @@ static void print_hex(uint32_t v) {
     print_string(buf);
 }
 
-void isr_handler(struct registers r) {
+void isr_handler(struct registers* r) {
     print_string("\n--- EXCEPTION DETECTED ---\n");
-    print_string(exception_messages[r.int_no]);
+    print_string(exception_messages[r->int_no]);
 
     // Page faults: CR2 holds the address that was touched
-    if (r.int_no == 14) {
+    if (r->int_no == 14) {
         uint32_t cr2;
         __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
         print_string("\n  fault addr: "); print_hex(cr2);
     }
-    print_string("\n  error code: "); print_hex(r.err_code);
-    print_string("\n  eip: ");         print_hex(r.eip);
+    print_string("\n  error code: "); print_hex(r->err_code);
+    print_string("\n  eip: ");         print_hex(r->eip);
 
     // Fault raised from Ring 3: the kernel is intact, so contain the
     // damage — kill the offending task and keep the system running.
-    if ((r.cs & 0x3) == 3) {
+    if ((r->cs & 0x3) == 3) {
         print_string("\n");
         // Marks the task stopped and schedules away; no return. The shell
         // reports the crash when it notices its foreground job ended.
-        task_exit((int)r.int_no, EXIT_FAULT);
+        task_exit((int)r->int_no, EXIT_FAULT);
     }
 
     print_string("\nKERNEL PANIC. Halting.\n");
@@ -112,21 +112,20 @@ void isr_handler(struct registers r) {
     while(1) __asm__ __volatile__("hlt");
 }
 
-typedef void (*irq_handler_t)(struct registers);
 irq_handler_t irq_handlers[16];
 
 void register_interrupt_handler(uint8_t n, irq_handler_t handler) {
     irq_handlers[n] = handler;
 }
 
-void irq_handler(struct registers r) {
-    if (r.int_no >= 40) {
+void irq_handler(struct registers* r) {
+    if (r->int_no >= 40) {
         port_byte_out(0xA0, 0x20); // Send EOI to slave
     }
     port_byte_out(0x20, 0x20); // Send EOI to master
 
-    if (irq_handlers[r.int_no - 32] != 0) {
-        irq_handler_t handler = irq_handlers[r.int_no - 32];
+    if (irq_handlers[r->int_no - 32] != 0) {
+        irq_handler_t handler = irq_handlers[r->int_no - 32];
         handler(r);
     }
 }

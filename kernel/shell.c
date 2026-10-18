@@ -278,6 +278,11 @@ void shell_poll() {
     int st = task_status(job_pid, &code, &kind);
     if (st == 0) return; // Still running
 
+    // Take the keyboard back. task_exit does this too, but a program that
+    // dies before `exec` got to hand it the keyboard would otherwise leave
+    // the shell deaf forever.
+    if (get_foreground() == job_pid) set_foreground(0);
+
     // Compose the whole report first: one print_string is atomic.
     job_pid = 0;
     if (!(job_quiet && st > 0 && kind == EXIT_NORMAL && code == 0)) {

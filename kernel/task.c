@@ -82,6 +82,11 @@ int create_task(const char* name, void (*entry)()) {
     t->page_dir = 0;
     memory_set((uint8_t*)t->files, 0, sizeof(t->files));
 
+    // Canary at the bottom of the kernel stack: schedule() checks it, so
+    // an overflow (which would silently corrupt this task_t's fields,
+    // just below the stack) is caught and named.
+    *(uint32_t*)t->stack = STACK_CANARY;
+
     uint32_t* stack_top = (uint32_t*)(t->stack + TASK_STACK_SIZE);
 
     // switch_context pop order: ebx, esi, edi, ebp, flags, then RET
@@ -142,6 +147,13 @@ void schedule() {
 
     int prev = current_task;
     int next = (current_task + 1) % task_count;
+
+    if (prev > 0 && *(uint32_t*)tasks[prev].stack != STACK_CANARY) {
+        print_string("\nKERNEL PANIC: kernel stack overflow in task '");
+        print_string(tasks[prev].name);
+        print_string("'\n");
+        while (1) __asm__ __volatile__("hlt");
+    }
 
     // A sleeping task is READY but skipped until its wake tick. The shell
     // (task 0) never sleeps, so there is always something to run.
@@ -228,6 +240,12 @@ int task_status(int pid, int* code, exit_kind_t* kind) {
         return 1;
     }
     return -1;
+}
+
+int task_alive(int pid) {
+    for (int i = 0; i < task_count; i++)
+        if ((int)tasks[i].id == pid) return tasks[i].state != TASK_STOPPED;
+    return 0;
 }
 
 void task_keep_status(int pid) {

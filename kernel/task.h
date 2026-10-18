@@ -6,7 +6,8 @@
 
 #define MAX_TASKS 8
 #define TASK_STACK_SIZE 4096
-#define MAX_FDS 8          // Per task; 0/1/2 are the console (never opened)
+#define MAX_FDS 8
+#define STACK_CANARY 0xC0FFEE42          // Per task; 0/1/2 are the console (never opened)
 
 typedef enum {
     TASK_RUNNING,
@@ -71,6 +72,8 @@ int task_status(int pid, int* code, exit_kind_t* kind);
 // Someone will ask for `pid`'s exit status: don't recycle its slot after
 // it stops until task_status() has reported it.
 void task_keep_status(int pid);
+// 1 if `pid` exists and has not stopped
+int task_alive(int pid);
 
 // Foreground task = keyboard owner (0 = shell). While a foreground program
 // runs, the shell stops consuming keys so the program's SYS_READ gets them.

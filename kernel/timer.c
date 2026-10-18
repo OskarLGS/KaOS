@@ -7,7 +7,7 @@
 static volatile uint32_t tick = 0;
 static uint32_t frequency = 0;
 
-static void timer_callback(struct registers regs) {
+static void timer_callback(struct registers* regs) {
     (void)regs;
     tick++;
     // Preemptive multitasking: drive the scheduler from the timer. EOI was
