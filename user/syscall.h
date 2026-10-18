@@ -13,6 +13,8 @@
 #define SYS_SLEEP   162
 #define SYS_CONNECT 300
 #define SYS_RESOLVE 301
+#define SYS_LISTEN  302
+#define SYS_ACCEPT  303
 
 // sys_open flags
 #define O_RDONLY  0x000
@@ -98,6 +100,17 @@ static inline int sys_resolve(const char* name, unsigned int* ip) {
 // sys_close, -1 if unreachable, -2 if refused.
 static inline int sys_connect(unsigned int ip, int port) {
     return syscall3(SYS_CONNECT, (int)ip, port, 0);
+}
+
+// Listen for TCP connections on `port` (< 1024: root only). Returns a
+// listening fd, -1 on error, -2 if the port is taken.
+static inline int sys_listen(int port) {
+    return syscall3(SYS_LISTEN, port, 0, 0);
+}
+
+// Wait for the next connection; returns its fd (read/write/close).
+static inline int sys_accept(int listen_fd) {
+    return syscall3(SYS_ACCEPT, listen_fd, 0, 0);
 }
 
 #endif

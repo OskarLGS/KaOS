@@ -234,6 +234,7 @@ static void close_files(task_t* t) {
             t->files[fd].node = 0;
         }
         t->files[fd].sock = 0;
+        t->files[fd].listen = 0;     // The net task drops dead listeners too
     }
 }
 

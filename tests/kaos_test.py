@@ -35,7 +35,7 @@ class Fail(Exception):
 class Kaos:
     """One QEMU instance running KaOS."""
 
-    def __init__(self, workdir, disk, mode="text", net=True):
+    def __init__(self, workdir, disk, mode="text", net=True, hostfwd=None):
         self.log_path = os.path.join(workdir, f"console-{mode}.log")
         self.pos = 0                      # Log offset already matched
         self.mport = free_port()
@@ -46,7 +46,8 @@ class Kaos:
                "-debugcon", f"file:{self.log_path}",
                "-monitor", f"tcp:127.0.0.1:{self.mport},server,nowait"]
         if net:
-            cmd += ["-netdev", "user,id=n0", "-device", "rtl8139,netdev=n0"]
+            fwd = f",hostfwd=tcp:127.0.0.1:{hostfwd}-:80" if hostfwd else ""
+            cmd += ["-netdev", "user,id=n0" + fwd, "-device", "rtl8139,netdev=n0"]
         self.qemu = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
@@ -189,10 +190,10 @@ def test_gui_boot(ctx):
         k.close()
 
 
-def session(ctx, name, net=True):
+def session(ctx, name, net=True, hostfwd=None):
     """A text-mode KaOS with a fresh disk, logged in as root."""
     disk = ctx.fresh_disk(name)
-    k = Kaos(ctx.tmp, disk, net=net)
+    k = Kaos(ctx.tmp, disk, net=net, hostfwd=hostfwd)
     try:
         k.expect("Choose a password for root: ", 15)
         k.line(ROOT_PW); k.expect("Retype it: ")
@@ -405,8 +406,63 @@ def test_editor(ctx):
         raise Fail("user's change to disk/hello.txt was saved")
 
 
+def http_get(port, path):
+    """Raw HTTP/1.0 GET from the host: (status code, body bytes)."""
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as s:
+        s.sendall(f"GET {path} HTTP/1.0\r\n\r\n".encode())
+        data = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+    head, _, body = data.partition(b"\r\n\r\n")
+    return int(head.split()[1]), body
+
+
+def test_httpd(ctx):
+    """KaOS as a web server, reached from the host through hostfwd."""
+    port = free_port()
+    k, disk = session(ctx, "httpd", hostfwd=port)
+    try:
+        k.run("mkdir disk/www", "Created.")
+        k.run("echo Hola desde KaOS > disk/www/index.html", "Written to file.")
+        k.run(f"fetch 10.0.2.2:{ctx.web_port}/grande.txt > disk/www/grande.txt",
+              "200 OK, 63600 bytes]", timeout=30)
+        k.run("exec disk/httpd.elf &", "httpd: serving disk/www on port 80")
+        time.sleep(1)
+        st, body = http_get(port, "/")
+        if st != 200 or body != b"Hola desde KaOS":
+            raise Fail(f"GET / -> {st} {body[:60]!r}")
+        k.expect("httpd: 200 disk/www/index.html")
+        st, body = http_get(port, "/grande.txt")
+        if st != 200 or body != open(os.path.join(ctx.www, "grande.txt"), "rb").read():
+            raise Fail(f"GET /grande.txt -> {st}, {len(body)} bytes")
+        if http_get(port, "/nada.txt")[0] != 404:
+            raise Fail("missing file not 404")
+        if http_get(port, "/../etc/passwd")[0] != 403:
+            raise Fail("'..' not refused")
+        # Kill it: the port must become free again
+        k.run("ps", "HTTPD.ELF")
+        pid = k.output()[:k.pos].rsplit("HTTPD.ELF", 1)[0].rstrip().split("\n")[-1].split()[0]
+        k.run("kill " + pid, "Killed task")
+        k.run("", "done] [killed]")
+        time.sleep(0.5)
+        k.run("exec disk/httpd.elf &", "httpd: serving disk/www on port 80")
+        if http_get(port, "/")[0] != 200:
+            raise Fail("restarted httpd does not answer")
+        # Ports below 1024 are root's
+        k.run("useradd " + USER, "Password for the new user: ")
+        k.line(USER_PW); k.expect("Retype it: ")
+        k.line(USER_PW); k.expect("Created " + USER)
+        k.run("su " + USER)
+        k.run("exec disk/httpd.elf 80", "cannot listen", "[exited with code 1]")
+    finally:
+        k.close()
+
+
 TESTS = [test_gui_boot, test_shell_and_files, test_programs, test_users, test_network,
-         test_keymap_es, test_panic, test_editor]
+         test_keymap_es, test_panic, test_editor, test_httpd]
 
 
 class Ctx:

@@ -24,10 +24,11 @@ typedef enum {
 } exit_kind_t;
 
 // An open file (SYS_OPEN) or socket (SYS_CONNECT). Slots 0-2 stay empty:
-// they mean the console. A slot is free when both node and sock are 0.
+// they mean the console. A slot is free when node, sock and listen are 0.
 typedef struct {
     fs_node_t* node;     // Open file, or 0
     int sock;            // TCP connection id + 1, or 0
+    int listen;          // TCP listener id + 1, or 0
     uint32_t offset;     // Next read/write position (files)
     uint32_t flags;      // O_* flags it was opened with
 } file_t;
