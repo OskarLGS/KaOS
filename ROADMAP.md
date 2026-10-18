@@ -121,13 +121,14 @@ From bare metal to a full operating system.
 
 ---
 
-## 🌑 Fase 8: Sistema Multi-Usuario y Red
+## 🌑 Fase 8: Sistema Multi-Usuario y Red (en progreso)
 ### Meta: Lo que conocemos como un SO moderno.
 - [ ] **Cuentas de Usuario**: Login, contraseñas y permisos en el VFS.
-- [ ] **Driver de red**: RTL8139 o e1000 (ambos emulables en QEMU).
-- [ ] **Pila de red por capas**: Ethernet → ARP → IPv4 → ICMP
-      (¡comando `ping`!) → UDP → DHCP → TCP.
-- [ ] **App de red**: Un cliente HTTP mínimo (`fetch example.com`).
+- [x] **Driver de red**: RTL8139 (PCI, DMA, sondeado por la tarea `net`).
+- [x] **Pila de red por capas**: Ethernet → ARP → IPv4 → ICMP
+      (`ping`) → UDP → DHCP (al arrancar) → DNS (`host`) → TCP (cliente).
+- [x] **App de red**: `fetch host[:port]/ruta [> fichero]` (HTTP/1.0);
+      verificado con una descarga de 63 KB idéntica byte a byte.
 - [ ] **Self-hosting**: Compilarse a sí mismo (necesita un compilador C
       portado... el jefe final).
 

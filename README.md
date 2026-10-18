@@ -83,7 +83,9 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 - **Interrupts (IDT)** — exceptions, PIC remap, hardware IRQs, syscalls.
 - **Drivers** — VGA text, VBE graphics, PS/2 keyboard (with Shift),
   PS/2 mouse, PIT timer, CMOS real-time clock, ATA PIO disk (read
-  **and write**).
+  **and write**), PCI, RTL8139 network card.
+- **Networking** — ARP, IPv4, ICMP, UDP, TCP; DHCP at boot, DNS;
+  `ping`, `host`, `fetch` (HTTP).
 - **Multitasking** — preemptive scheduler (timer-driven) with `ps`, `kill`.
 - **User Mode (Ring 3)** — ELF programs run unprivileged; a crashing
   program is killed without taking the system down.
@@ -118,6 +120,9 @@ touch     Create an empty file            rm        Delete a file / empty dir
 mkdir     Create a directory (mkdir disk/docs/sub)
 cp        Copy a file                    mv        Move / rename
 spin      Preemption demo (CPU-bound task)
+ifconfig  Network settings               ping      Ping a host
+host      DNS lookup                     fetch     HTTP GET (fetch 10.0.2.2:8080/f.txt)
+arp       ARP cache                      dhcp      Renew the address
 ```
 
 ## Documentation
