@@ -43,6 +43,16 @@ wsl bash build.sh
 Produces `kaos.img` (bootable floppy) and `build/fat32.img` (64MB FAT32
 hard disk with the user programs — your files on it persist).
 
+## Test
+
+```bash
+./test.sh
+```
+
+Builds, then boots KaOS five times in headless QEMU (desktop, files,
+programs, users, network) on throw-away copies of the disk, types
+commands and checks the output and the disk contents. ~1.5 minutes.
+
 ## Run
 
 ### QEMU (recommended)

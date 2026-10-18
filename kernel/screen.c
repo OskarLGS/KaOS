@@ -73,6 +73,11 @@ void scroll() {
 }
 
 void print_char(char character, char attribute) {
+    // Mirror every console character to the debug port: QEMU's -debugcon
+    // logs it, which is how tests/kaos_test.py reads the whole session
+    // (real hardware ignores the port).
+    port_byte_out(0xE9, (uint8_t)character);
+
     if (print_sink) {
         print_sink(character);
         return;

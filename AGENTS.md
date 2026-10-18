@@ -67,6 +67,19 @@ GPQVTRKMS!DW
 time`R`, `K`eyboard, `M`ouse, `S`hell, `!` = sti, `D`esktop, `W`indows.)
 Text mode prints `GTRKS!`. Any prefix of these = it hung right after the
 last letter shown. Add `dbg('X')` calls in `kernel/main.c` to bisect.
+The same port also receives **every console character** (print_char
+mirrors it), so the log is a full transcript of the session with the
+milestone letters interleaved.
+
+## Automated tests
+
+`./test.sh` builds and runs `tests/kaos_test.py`: five QEMU sessions
+(desktop, files, programs, users, network), each on a throw-away copy
+of `build/fat32.img` (your disk is never touched), driven through the
+QEMU monitor and checked against the console transcript, plus host-side
+checks (mtools, `cmp`, `fsck.fat`). It starts its own HTTP servers for
+the network tests. `./test.sh -k users` runs one; `--keep` keeps logs.
+Takes ~1.5 minutes; run it before calling work done.
 
 Scripted end-to-end test pattern (boot, type, screenshot — all headless):
 

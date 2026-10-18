@@ -144,11 +144,12 @@ From bare metal to a full operating system.
 ## 🔧 Transversal (cuando toque)
 - [ ] Layout de teclado ES (hoy: US; la ñ espera su momento).
 - [ ] `panic()` con volcado de registros legible en vez de colgarse.
-- [ ] Liberar la memoria de los `fs_node_t` creados por `finddir`
-      (hoy se filtran — no hay `close` real).
-- [ ] Soporte de teclas extendidas (E0: flechas, supr, inicio/fin).
-- [ ] Build reproducible con tests automáticos (el patrón headless de
-      AGENTS.md convertido en script `test.sh`).
+- [x] Liberar la memoria de los `fs_node_t` creados por `finddir`
+      (`vfs_release`).
+- [x] Soporte de teclas extendidas (E0: flechas, RePág/AvPág).
+- [x] Tests automáticos: `./test.sh` compila y ejecuta 5 sesiones de
+      QEMU (escritorio, ficheros, programas, usuarios, red) comprobando
+      la transcripción de consola y el disco desde el host.
 
 ---
 

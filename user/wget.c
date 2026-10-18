@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
 
     // Skip the headers (up to the blank line), keep the body
     char buf[512];
-    int state = 0, body = 0, r;
+    int state = 0, body = 0, r, write_failed = 0;
     while ((r = sys_read_fd(s, buf, sizeof(buf))) > 0) {
         int i = 0;
         while (state < 4 && i < r) {
@@ -77,8 +77,11 @@ int main(int argc, char** argv) {
             state = (c == "\r\n\r\n"[state]) ? state + 1 : (c == '\r' ? 1 : 0);
         }
         if (i < r) {
-            if (out >= 0) sys_write_fd(out, buf + i, r - i);
-            else sys_write(buf + i, r - i);
+            if (out >= 0) {
+                if (sys_write_fd(out, buf + i, r - i) != r - i) { write_failed = 1; break; }
+            } else {
+                sys_write(buf + i, r - i);
+            }
             body += r - i;
         }
     }
@@ -87,6 +90,7 @@ int main(int argc, char** argv) {
 
     say("\nwget: ");
     say_num(body);
+    if (write_failed) { say(" bytes, then writing the file failed\n"); return 1; }
     say(r < 0 ? " bytes (connection error)\n" : " bytes\n");
     return r < 0 ? 1 : 0;
 }
