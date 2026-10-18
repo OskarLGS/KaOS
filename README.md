@@ -103,7 +103,8 @@ halt      Halt the CPU                   free      Free memory (free 0xADDR)
 uptime    Show system uptime             paging    Show paging info
 ps        List running tasks             kill      Stop a task by PID
 exec      Run an ELF program in Ring 3 (exec disk/args.elf hola mundo)
-touch     Create an empty file            rm        Delete a file
+touch     Create an empty file            rm        Delete a file / empty dir
+mkdir     Create a directory (mkdir disk/docs/sub)
 spin      Preemption demo (CPU-bound task)
 ```
 

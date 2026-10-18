@@ -97,7 +97,8 @@ From bare metal to a full operating system.
       (entrada de directorio 8.3 nueva). VFS con `create`/`unlink`.
 - [x] **Borrar ficheros**: `rm` (marca 0xE5 + libera la cadena de clusters).
       Verificado: persiste entre reinicios y desde el host (`mdir`).
-- [ ] **Crear directorios**: `mkdir` (entradas `.` y `..`).
+- [x] **Crear directorios**: `mkdir` (entradas `.` y `..`) y `rm` de
+      directorios vacíos. Nombres que no caben en 8.3 se rechazan.
 - [x] **Liberar clusters al truncar**: reescribir un fichero más corto
       libera la cola de la cadena (verificado con `fsck.fat`).
 - [ ] **Nombres largos (LFN)**: Leer (y luego escribir) entradas UCS-2.

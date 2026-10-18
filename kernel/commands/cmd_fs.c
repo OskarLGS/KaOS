@@ -3,6 +3,8 @@
 #include "../util.h"
 #include "../screen.h"
 
+#define BAD_NAME_MSG "Name must be 8.3 (up to 8 chars, optional .ext of 3).\n"
+
 static char* skip_spaces(char* s) {
     while (*s == ' ') s++;
     return s;
@@ -66,7 +68,9 @@ static void cmd_touch(char* args) {
     char name[VFS_PATH_MAX];
     fs_node_t* dir = vfs_resolve_parent(args, name);
     if (!dir) { print_string("Directory not found.\n"); return; }
-    if (create_fs(dir, name) == 0) print_string("Created.\n");
+    int r = create_fs(dir, name);
+    if (r == 0) print_string("Created.\n");
+    else if (r == VFS_EBADNAME) print_string(BAD_NAME_MSG);
     else print_string("Could not create file (exists, or not supported here).\n");
     vfs_release(dir);
 }
@@ -78,8 +82,24 @@ static void cmd_rm(char* args) {
     char name[VFS_PATH_MAX];
     fs_node_t* dir = vfs_resolve_parent(args, name);
     if (!dir) { print_string("Directory not found.\n"); return; }
-    if (unlink_fs(dir, name) == 0) print_string("Removed.\n");
-    else print_string("Could not remove file (not found, or not supported here).\n");
+    int r = unlink_fs(dir, name);
+    if (r == 0) print_string("Removed.\n");
+    else if (r == -2) print_string("Directory not empty.\n");
+    else print_string("Could not remove (not found, or not supported here).\n");
+    vfs_release(dir);
+}
+
+static void cmd_mkdir(char* args) {
+    args = skip_spaces(args);
+    if (*args == '\0') { print_string("Usage: mkdir <path>\n"); return; }
+
+    char name[VFS_PATH_MAX];
+    fs_node_t* dir = vfs_resolve_parent(args, name);
+    if (!dir) { print_string("Directory not found.\n"); return; }
+    int r = mkdir_fs(dir, name);
+    if (r == 0) print_string("Created.\n");
+    else if (r == VFS_EBADNAME) print_string(BAD_NAME_MSG);
+    else print_string("Could not create directory (exists, or not supported here).\n");
     vfs_release(dir);
 }
 
@@ -127,5 +147,6 @@ void init_cmd_fs() {
     register_command("cat", "Print file contents", cmd_cat);
     register_command("echo", "Write to file (echo msg > file)", cmd_echo);
     register_command("touch", "Create an empty file (touch disk/f.txt)", cmd_touch);
-    register_command("rm", "Delete a file (rm disk/f.txt)", cmd_rm);
+    register_command("rm", "Delete a file or empty dir (rm disk/f.txt)", cmd_rm);
+    register_command("mkdir", "Create a directory (mkdir disk/docs/new)", cmd_mkdir);
 }

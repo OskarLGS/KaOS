@@ -16,6 +16,7 @@ static fs_node_t *fat32_root_node = 0;
 // Forward declarations (finddir wires these onto directory nodes)
 static int fat32_create(fs_node_t* dir, char* name);
 static int fat32_delete(fs_node_t* dir, char* name);
+static int fat32_mkdir(fs_node_t* dir, char* name);
 
 static uint32_t cluster_to_lba(uint32_t cluster) {
     return data_start_sector + ((cluster - 2) * sectors_per_cluster);
@@ -315,6 +316,10 @@ static fs_node_t *fat32_finddir(fs_node_t *node, char *name) {
                 memory_set((uint8_t*)res, 0, sizeof(fs_node_t));
                 strcpy(res->name, name);
                 res->inode   = (entry->first_cluster_hi << 16) | entry->first_cluster_lo;
+                // ".." of a first-level directory points at cluster 0,
+                // which FAT32 uses to mean the root directory
+                if ((entry->attr & 0x10) && res->inode == 0)
+                    res->inode = root_dir_cluster;
                 res->length  = entry->file_size;
                 res->flags   = ((entry->attr & 0x10) ? FS_DIRECTORY : FS_FILE)
                                | FS_ALLOCATED;
@@ -325,6 +330,7 @@ static fs_node_t *fat32_finddir(fs_node_t *node, char *name) {
                 if (entry->attr & 0x10) {        // subdirectory: allow create/delete
                     res->create = fat32_create;
                     res->unlink = fat32_delete;
+                    res->mkdir  = fat32_mkdir;
                 }
                 // Remember where this directory entry lives (for writes)
                 res->impl    = (lba + s) * 16 + (i / 32);
@@ -334,6 +340,27 @@ static fs_node_t *fat32_finddir(fs_node_t *node, char *name) {
         cluster = get_next_cluster(cluster);
     }
     return 0;
+}
+
+// 1 if `name` fits a short 8.3 entry: 1-8 chars, optional '.' + 1-3 chars,
+// no characters FAT forbids. Longer names would be silently truncated
+// (and then never found again), so create/mkdir refuse them until LFN.
+static int valid_83(const char* name) {
+    int base = 0, ext = -1;
+    for (const char* p = name; *p; p++) {
+        char c = *p;
+        if (c == '.') {
+            if (ext >= 0) return 0;      // Only one dot
+            ext = 0;
+            continue;
+        }
+        if (c <= ' ' || c == '"' || c == '*' || c == '/' || c == ':' ||
+            c == '<' || c == '>' || c == '?' || c == '\\' || c == '|' ||
+            c == '+' || c == ',' || c == ';' || c == '=' || c == '[' ||
+            c == ']') return 0;
+        if (ext >= 0) ext++; else base++;
+    }
+    return base >= 1 && base <= 8 && ext != 0 && ext <= 3;
 }
 
 // Convert "notes.txt" -> "NOTES   TXT" (8.3, uppercase, space padded)
@@ -356,15 +383,30 @@ static void name_to_83(const char* name, uint8_t out[11]) {
     }
 }
 
-// Create an empty file in directory `dir`. Returns 0 on success.
-static int fat32_create(fs_node_t* dir, char* name) {
-    // Refuse duplicates
-    fs_node_t* existing = fat32_finddir(dir, name);
-    if (existing) { kfree((uint32_t)existing); return -1; }
+// Fill every sector of a cluster with zeros (a zeroed directory cluster
+// reads as "no more entries").
+static int zero_cluster(uint32_t cluster) {
+    uint8_t zero[512];
+    memory_set(zero, 0, 512);
+    uint32_t lba = cluster_to_lba(cluster);
+    for (uint32_t s = 0; s < sectors_per_cluster; s++)
+        if (ata_write_sector(lba + s, zero) != 0) return -1;
+    return 0;
+}
 
-    uint8_t entry83[11];
-    name_to_83(name, entry83);
+static void fill_entry(fat32_entry_t* e, const uint8_t name83[11],
+                       uint8_t attr, uint32_t first_cluster) {
+    memory_set((uint8_t*)e, 0, sizeof(fat32_entry_t));
+    for (int n = 0; n < 11; n++) e->name[n] = name83[n];
+    e->attr = attr;
+    e->first_cluster_lo = first_cluster & 0xFFFF;
+    e->first_cluster_hi = (first_cluster >> 16) & 0xFFFF;
+}
 
+// Write a new entry into the first free slot of `dir`, growing the
+// directory by one cluster when it is full. Returns 0 on success.
+static int add_entry(fs_node_t* dir, const uint8_t name83[11],
+                     uint8_t attr, uint32_t first_cluster) {
     uint8_t buffer[512];
     uint32_t cluster = dir->inode;
     uint32_t prev_cluster = cluster;
@@ -376,16 +418,8 @@ static int fat32_create(fs_node_t* dir, char* name) {
             for (int i = 0; i < 512; i += 32) {
                 uint8_t first = buffer[i];
                 if (first == 0x00 || first == 0xE5) {
-                    // Free slot — write the new entry here
-                    fat32_entry_t* e = (fat32_entry_t*)&buffer[i];
-                    memory_set((uint8_t*)e, 0, sizeof(fat32_entry_t));
-                    for (int n = 0; n < 11; n++) e->name[n] = entry83[n];
-                    e->attr = 0x20; // Archive
-                    e->first_cluster_lo = 0;
-                    e->first_cluster_hi = 0;
-                    e->file_size = 0;
-                    if (ata_write_sector(lba + s, buffer) != 0) return -1;
-                    return 0;
+                    fill_entry((fat32_entry_t*)&buffer[i], name83, attr, first_cluster);
+                    return ata_write_sector(lba + s, buffer) == 0 ? 0 : -1;
                 }
             }
         }
@@ -393,22 +427,86 @@ static int fat32_create(fs_node_t* dir, char* name) {
         cluster = get_next_cluster(cluster);
     }
 
-    // Directory full: allocate and link a fresh cluster, write the entry first
+    // Directory full: allocate and link a fresh, fully zeroed cluster
     uint32_t newc = find_free_cluster();
     if (!newc) return -1;
-    if (set_fat_entry(prev_cluster, newc) != 0) return -1;
     if (set_fat_entry(newc, 0x0FFFFFFF) != 0) return -1;
+    if (zero_cluster(newc) != 0) return -1;
+    if (set_fat_entry(prev_cluster, newc) != 0) return -1;
 
-    memory_set(buffer, 0, 512); // Zeroed cluster => rest stays end-of-dir
-    fat32_entry_t* e = (fat32_entry_t*)&buffer[0];
-    for (int n = 0; n < 11; n++) e->name[n] = entry83[n];
-    e->attr = 0x20;
-    uint32_t lba = cluster_to_lba(newc);
-    if (ata_write_sector(lba, buffer) != 0) return -1;
+    memory_set(buffer, 0, 512);
+    fill_entry((fat32_entry_t*)&buffer[0], name83, attr, first_cluster);
+    return ata_write_sector(cluster_to_lba(newc), buffer) == 0 ? 0 : -1;
+}
+
+// Create an empty file in directory `dir`. Returns 0 on success.
+static int fat32_create(fs_node_t* dir, char* name) {
+    // Refuse duplicates
+    fs_node_t* existing = fat32_finddir(dir, name);
+    if (existing) { kfree((uint32_t)existing); return -1; }
+    if (!valid_83(name)) return -3;
+
+    uint8_t entry83[11];
+    name_to_83(name, entry83);
+    return add_entry(dir, entry83, 0x20 /* Archive */, 0);
+}
+
+// Create a subdirectory: one zeroed cluster holding "." and "..".
+static int fat32_mkdir(fs_node_t* dir, char* name) {
+    fs_node_t* existing = fat32_finddir(dir, name);
+    if (existing) { kfree((uint32_t)existing); return -1; }
+
+    if (!valid_83(name)) return -3;
+
+    uint8_t entry83[11];
+    name_to_83(name, entry83);
+
+    uint32_t c = find_free_cluster();
+    if (!c) return -1;
+    if (set_fat_entry(c, 0x0FFFFFFF) != 0) return -1;
+    if (zero_cluster(c) != 0) { set_fat_entry(c, 0); return -1; }
+
+    // ".." of a directory directly under the root records cluster 0
+    uint32_t parent = (dir->inode == root_dir_cluster) ? 0 : dir->inode;
+    uint8_t dot[11], dotdot[11];
+    for (int n = 0; n < 11; n++) dot[n] = dotdot[n] = ' ';
+    dot[0] = '.';
+    dotdot[0] = dotdot[1] = '.';
+
+    uint8_t buffer[512];
+    memory_set(buffer, 0, 512);
+    fill_entry((fat32_entry_t*)&buffer[0],  dot,    0x10, c);
+    fill_entry((fat32_entry_t*)&buffer[32], dotdot, 0x10, parent);
+    if (ata_write_sector(cluster_to_lba(c), buffer) != 0 ||
+        add_entry(dir, entry83, 0x10, c) != 0) {
+        free_chain(c);
+        return -1;
+    }
     return 0;
 }
 
-// Delete a file from directory `dir`. Returns 0 on success.
+// 1 if the directory starting at `cluster` holds nothing but "." / "..".
+static int dir_is_empty(uint32_t cluster) {
+    uint8_t buffer[512];
+    while (cluster >= 2 && cluster < 0x0FFFFFF8) {
+        uint32_t lba = cluster_to_lba(cluster);
+        for (uint32_t s = 0; s < sectors_per_cluster; s++) {
+            if (ata_read_sector(lba + s, buffer) != 0) return 0;
+            for (int i = 0; i < 512; i += 32) {
+                fat32_entry_t* e = (fat32_entry_t*)&buffer[i];
+                if (e->name[0] == 0x00) return 1;
+                if (e->name[0] == 0xE5 || e->name[0] == '.') continue;
+                if (e->attr == 0x0F) continue; // LFN fragment
+                return 0;
+            }
+        }
+        cluster = get_next_cluster(cluster);
+    }
+    return 1;
+}
+
+// Delete a file or an empty subdirectory from `dir`. Returns 0 on
+// success, -1 if not found, -2 if it is a directory that is not empty.
 static int fat32_delete(fs_node_t* dir, char* name) {
     uint8_t want[11];
     name_to_83(name, want);
@@ -425,14 +523,15 @@ static int fat32_delete(fs_node_t* dir, char* name) {
                 if (e->name[0] == 0x00) return -1; // End of dir, not found
                 if (e->name[0] == 0xE5) continue;
                 if (e->attr == 0x0F) continue;      // LFN
-                if (e->attr & 0x10) continue;       // Directory — files only
 
                 int match = 1;
                 for (int n = 0; n < 11; n++)
                     if (e->name[n] != want[n]) { match = 0; break; }
                 if (!match) continue;
 
-                free_chain((e->first_cluster_hi << 16) | e->first_cluster_lo);
+                uint32_t first = (e->first_cluster_hi << 16) | e->first_cluster_lo;
+                if ((e->attr & 0x10) && !dir_is_empty(first)) return -2;
+                free_chain(first);
 
                 e->name[0] = 0xE5; // Mark deleted
                 if (ata_write_sector(lba + s, buffer) != 0) return -1;
@@ -442,6 +541,27 @@ static int fat32_delete(fs_node_t* dir, char* name) {
         cluster = get_next_cluster(cluster);
     }
     return -1;
+}
+
+// The FSInfo sector caches the free-cluster count and a next-free hint.
+// We allocate and free clusters without maintaining them, so mark both
+// "unknown" (0xFFFFFFFF, allowed by the spec): other systems then
+// recompute them instead of trusting a stale count.
+static void invalidate_fsinfo() {
+    uint16_t sector = bpb.fs_info_sector;
+    if (sector == 0 || sector == 0xFFFF) return;
+
+    uint8_t buffer[512];
+    if (ata_read_sector(sector, buffer) != 0) return;
+    if (*(uint32_t*)&buffer[0]   != 0x41615252 ||   // "RRaA"
+        *(uint32_t*)&buffer[484] != 0x61417272) return; // "rrAa"
+
+    uint32_t* free_count = (uint32_t*)&buffer[488];
+    uint32_t* next_free  = (uint32_t*)&buffer[492];
+    if (*free_count == 0xFFFFFFFF && *next_free == 0xFFFFFFFF) return;
+    *free_count = 0xFFFFFFFF;
+    *next_free  = 0xFFFFFFFF;
+    ata_write_sector(sector, buffer);
 }
 
 fs_node_t* fat32_init() {
@@ -459,6 +579,8 @@ fs_node_t* fat32_init() {
     sectors_per_cluster = bpb.sectors_per_cluster;
     root_dir_cluster = bpb.root_cluster;
 
+    invalidate_fsinfo();
+
     // Create VFS root node for FAT32
     fat32_root_node = (fs_node_t*)kmalloc(sizeof(fs_node_t));
     memory_set((uint8_t*)fat32_root_node, 0, sizeof(fs_node_t));
@@ -471,6 +593,7 @@ fs_node_t* fat32_init() {
     fat32_root_node->finddir = fat32_finddir;
     fat32_root_node->create  = fat32_create;
     fat32_root_node->unlink  = fat32_delete;
+    fat32_root_node->mkdir   = fat32_mkdir;
 
     return fat32_root_node;
 }

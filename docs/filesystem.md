@@ -57,13 +57,23 @@ layout, no partition table).
 - `fat32_create(dir, name)` — find a free 32-byte directory slot (`0x00`
   end or `0xE5` deleted), or allocate+link a new directory cluster if the
   chain is full; write an 8.3 entry (attr `0x20`, cluster 0, size 0).
-- `fat32_delete(dir, name)` — free the file's cluster chain and mark the
-  entry `0xE5`. Files only (not directories).
-- `name_to_83` converts "notes.txt" → "NOTES   TXT".
-- Wired through the VFS `create`/`unlink` ops on directory nodes.
+- `fat32_mkdir(dir, name)` — allocate and zero one cluster, write `.`
+  (itself) and `..` (parent; cluster 0 when the parent is the root, which
+  `finddir` maps back to the root cluster), then add a 0x10 entry.
+- `fat32_delete(dir, name)` — free the cluster chain and mark the entry
+  `0xE5`. Directories only when empty (else returns -2).
+- `add_entry` puts a new entry in the first free slot, growing the
+  directory by a fully zeroed cluster when it is full.
+- `name_to_83` converts "notes.txt" → "NOTES   TXT". `valid_83` rejects
+  names that do not fit (create/mkdir return `VFS_EBADNAME`) — a longer
+  name would be truncated and never found again.
+- Wired through the VFS `create`/`unlink`/`mkdir` ops on directory nodes.
+- On mount, the FSInfo free-cluster count and next-free hint are set to
+  "unknown" (0xFFFFFFFF): KaOS does not maintain them, so other systems
+  recompute them.
 
 ### Not supported yet
-`mkdir`, long filenames (LFN), file timestamps (no RTC — new files
+Long filenames (LFN), file timestamps (no RTC — new files
 show 1980). A write sets the file size to the end of that write (fine
 for sequential writes from offset 0; there is no append-in-the-middle).
 
@@ -75,6 +85,7 @@ ls disk       list the FAT32 root
 cat disk/hello.txt
 echo new content > disk/notes.txt    (persists across reboots)
 exec disk/app.elf                    (load + run ELF from disk)
+mkdir disk/proy/kaos                 (parent must exist)
+cat disk/proy/kaos/../../hello.txt   (any depth, . and .. work on FAT32)
+rm disk/proy                         (files, or directories once empty)
 ```
-
-Paths are one level deep (`dir/file`) — that is what the shell parses.

@@ -101,6 +101,11 @@ void init_ramfs() {
     ramfs_root = (fs_node_t*)kmalloc(sizeof(fs_node_t));
     ramfs_files[0] = (fs_node_t*)kmalloc(sizeof(fs_node_t));
     ramfs_files[1] = (fs_node_t*)kmalloc(sizeof(fs_node_t));
+    // kmalloc doesn't zero: clear every field so ops we don't set here
+    // (create, unlink, mkdir, ...) are null instead of garbage pointers
+    memory_set((uint8_t*)ramfs_root, 0, sizeof(fs_node_t));
+    memory_set((uint8_t*)ramfs_files[0], 0, sizeof(fs_node_t));
+    memory_set((uint8_t*)ramfs_files[1], 0, sizeof(fs_node_t));
 
     // Initialize root directory
     memory_copy("ramfs\0", ramfs_root->name, 6);
@@ -111,7 +116,7 @@ void init_ramfs() {
     ramfs_root->close = 0;
     ramfs_root->readdir = &ramfs_readdir;
     ramfs_root->finddir = &ramfs_finddir;
-    ramfs_root->create = 0; // RAMFS is read-only for creation (kmalloc doesn't zero)
+    ramfs_root->create = 0; // RAMFS is read-only for creation
     ramfs_root->unlink = 0;
 
     // Initialize README.TXT

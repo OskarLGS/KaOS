@@ -62,6 +62,13 @@ int unlink_fs(fs_node_t *node, char *name) {
     return -1;
 }
 
+int mkdir_fs(fs_node_t *node, char *name) {
+    if ((node->flags & 0x7) == FS_DIRECTORY && node->mkdir != 0) {
+        return node->mkdir(node, name);
+    }
+    return -1;
+}
+
 void vfs_release(fs_node_t *node) {
     if (node && (node->flags & FS_ALLOCATED)) kfree((uint32_t)node);
 }
