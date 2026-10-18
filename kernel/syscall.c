@@ -7,6 +7,7 @@
 #include "vfs.h"
 #include "util.h"
 #include "users.h"
+#include "net/net.h"
 
 // A Ring 3 program supplies raw pointers/lengths. Before the kernel
 // dereferences them we must confirm the whole range lies in pages the
@@ -29,11 +30,72 @@ static int copy_user_string(char* dst, uint32_t src, uint32_t max) {
     return -1;
 }
 
-// The open file behind `fd`, or 0 (also for 0-2, which are the console).
+// The open file/socket behind `fd`, or 0 (also for 0-2: the console).
 static file_t* get_file(uint32_t fd) {
     if (fd < 3 || fd >= MAX_FDS) return 0;
     file_t* f = &current_task_ptr()->files[fd];
-    return f->node ? f : 0;
+    return (f->node || f->sock || f->listen) ? f : 0;
+}
+
+static int free_fd(task_t* t) {
+    for (int i = 3; i < MAX_FDS; i++)
+        if (!t->files[i].node && !t->files[i].sock && !t->files[i].listen) return i;
+    return -1;
+}
+
+#define SOCK_TIMEOUT_MS 30000   // A read waiting longer than this fails
+
+static int sys_connect(uint32_t ip, uint32_t port) {
+    if (!netif.up || port == 0 || port > 65535) return -1;
+    task_t* t = current_task_ptr();
+    int fd = free_fd(t);
+    if (fd < 0) return -1;
+    // Sleeps until connected; the connection belongs to this task
+    int c = tcp_connect(ip, (uint16_t)port, 5000);
+    if (c < 0) return c;                 // -1 unreachable/timeout, -2 refused
+    t->files[fd].sock = c + 1;
+    t->files[fd].node = 0;
+    t->files[fd].flags = O_RDWR;
+    return fd;
+}
+
+static int sys_listen(uint32_t port) {
+    if (!netif.up || port == 0 || port > 65535) return -1;
+    if (port < 1024 && current_uid() != UID_ROOT) return -1;   // Privileged ports
+    task_t* t = current_task_ptr();
+    int fd = free_fd(t);
+    if (fd < 0) return -1;
+    int l = tcp_listen((uint16_t)port);
+    if (l < 0) return l;
+    t->files[fd].listen = l + 1;
+    t->files[fd].node = 0;
+    t->files[fd].sock = 0;
+    return fd;
+}
+
+static int sys_accept(uint32_t lfd) {
+    file_t* lf = get_file(lfd);
+    if (!lf || !lf->listen) return -1;
+    task_t* t = current_task_ptr();
+    int fd = free_fd(t);
+    if (fd < 0) return -1;
+    int c = tcp_accept(lf->listen - 1, 0);       // Waits for a client
+    if (c < 0) return -1;
+    t->files[fd].sock = c + 1;
+    t->files[fd].node = 0;
+    t->files[fd].listen = 0;
+    t->files[fd].flags = O_RDWR;
+    return fd;
+}
+
+static int sys_resolve(uint32_t uname, uint32_t uip) {
+    char name[96];
+    if (copy_user_string(name, uname, sizeof(name)) != 0) return -1;
+    if (!user_range_ok(uip, 4)) return -1;
+    uint32_t ip;
+    if (!dns_resolve(name, &ip)) return -1;
+    *(uint32_t*)uip = ip;
+    return 0;
 }
 
 static int sys_open(uint32_t upath, uint32_t flags) {
@@ -46,9 +108,7 @@ static int sys_open(uint32_t upath, uint32_t flags) {
         return -1;
 
     task_t* t = current_task_ptr();
-    int fd = -1;
-    for (int i = 3; i < MAX_FDS; i++)
-        if (!t->files[i].node) { fd = i; break; }
+    int fd = free_fd(t);
     if (fd < 0) return -1; // Too many open files
 
     fs_node_t* node = vfs_resolve(path);
@@ -62,6 +122,7 @@ static int sys_open(uint32_t upath, uint32_t flags) {
     if ((node->flags & 0x7) != FS_FILE) { vfs_release(node); return -1; }
 
     t->files[fd].node   = node;
+    t->files[fd].sock   = 0;
     t->files[fd].offset = 0;
     t->files[fd].flags  = flags;
     return fd;
@@ -70,6 +131,18 @@ static int sys_open(uint32_t upath, uint32_t flags) {
 static int sys_close(uint32_t fd) {
     file_t* f = get_file(fd);
     if (!f) return -1;
+    if (f->listen) {
+        int l = f->listen - 1;
+        f->listen = 0;
+        tcp_unlisten(l);
+        return 0;
+    }
+    if (f->sock) {
+        int c = f->sock - 1;
+        f->sock = 0;                     // Free the slot before sleeping
+        tcp_close(c);
+        return 0;
+    }
     vfs_release(f->node);
     f->node = 0;
     return 0;
@@ -122,8 +195,13 @@ void syscall_handler(struct registers *r) {
             if (!user_range_ok(r->ecx, r->edx)) { r->eax = (uint32_t)-1; break; }
             if (r->ebx != 0) {
                 file_t* f = get_file(r->ebx);
-                if (!f || (f->flags & O_ACCMODE) == O_WRONLY) {
+                if (!f || f->listen || (f->flags & O_ACCMODE) == O_WRONLY) {
                     r->eax = (uint32_t)-1;
+                    break;
+                }
+                if (f->sock) {           // 0 = peer closed, -1 = error/timeout
+                    r->eax = (uint32_t)tcp_recv(f->sock - 1, (void*)r->ecx, r->edx,
+                                                SOCK_TIMEOUT_MS);
                     break;
                 }
                 uint32_t n = read_fs(f->node, f->offset, r->edx, (uint8_t*)r->ecx);
@@ -150,7 +228,7 @@ void syscall_handler(struct registers *r) {
                     if (n > 0) { n--; print_string("\b \b"); }
                     continue;
                 }
-                if ((uint8_t)c < 0x20 && c != '\t') continue; // Arrows, PgUp...
+                if (!key_is_text(c) && c != '\t') continue; // Arrows, Ctrl+X...
                 buf[n++] = c;
                 char s[2] = { c, '\0' };
                 print_string(s); // echo
@@ -167,8 +245,12 @@ void syscall_handler(struct registers *r) {
             }
             if (r->ebx >= 3) {
                 file_t* f = get_file(r->ebx);
-                if (!f || (f->flags & O_ACCMODE) == O_RDONLY) {
+                if (!f || f->listen || (f->flags & O_ACCMODE) == O_RDONLY) {
                     r->eax = (uint32_t)-1;
+                    break;
+                }
+                if (f->sock) {
+                    r->eax = (uint32_t)tcp_send(f->sock - 1, (void*)r->ecx, r->edx);
                     break;
                 }
                 uint32_t n = write_fs(f->node, f->offset, r->edx, (uint8_t*)r->ecx);
@@ -198,6 +280,22 @@ void syscall_handler(struct registers *r) {
 
         case SYS_OPEN:   // ebx = path, ecx = flags -> fd or -1
             r->eax = (uint32_t)sys_open(r->ebx, r->ecx);
+            break;
+
+        case SYS_CONNECT:  // ebx = ip, ecx = port -> fd, -1, -2 (refused)
+            r->eax = (uint32_t)sys_connect(r->ebx, r->ecx);
+            break;
+
+        case SYS_LISTEN:   // ebx = port -> fd
+            r->eax = (uint32_t)sys_listen(r->ebx);
+            break;
+
+        case SYS_ACCEPT:   // ebx = listening fd -> new fd
+            r->eax = (uint32_t)sys_accept(r->ebx);
+            break;
+
+        case SYS_RESOLVE:  // ebx = name, ecx = &ip
+            r->eax = (uint32_t)sys_resolve(r->ebx, r->ecx);
             break;
 
         case SYS_CLOSE:  // ebx = fd

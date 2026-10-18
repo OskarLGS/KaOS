@@ -26,8 +26,9 @@ Outputs:
   afterwards (user data written from inside KaOS survives rebuilds; delete
   it to start fresh).
 
-The script fails if the kernel outgrows its 256-sector slot (128KB).
-Current size is printed on every build (~35KB used).
+The script fails if the kernel outgrows its slot (`KERNEL_SECTORS` at the
+top of build.sh, 512 sectors = 256KB).
+Current size is printed on every build (~120KB used).
 
 ## Run in QEMU
 
@@ -66,6 +67,30 @@ GPQVTRKMS!DW
 time`R`, `K`eyboard, `M`ouse, `S`hell, `!` = sti, `D`esktop, `W`indows.)
 Text mode prints `GTRKS!`. Any prefix of these = it hung right after the
 last letter shown. Add `dbg('X')` calls in `kernel/main.c` to bisect.
+The same port also receives **every console character** (print_char
+mirrors it), so the log is a full transcript of the session with the
+milestone letters interleaved.
+
+## Kernel panics
+
+A fault in Ring 0 (or a kernel stack overflow) shows a full report —
+exception, CR2, all registers, running task, CR3 — drawn straight to
+the screen (red screen on the desktop) and mirrored to the debug port.
+Turn its EIP into a function with `build/kernel.map` (written by
+build.sh: the last entry whose address is ≤ EIP). `panic` (root) faults
+on purpose to try it.
+
+## Automated tests
+
+`./test.sh` builds and runs `tests/kaos_test.py`: nine QEMU sessions
+(desktop, files, programs, users, network, ES keyboard, panic, editor,
+web server — reached from the host via hostfwd),
+each on a throw-away copy
+of `build/fat32.img` (your disk is never touched), driven through the
+QEMU monitor and checked against the console transcript, plus host-side
+checks (mtools, `cmp`, `fsck.fat`). It starts its own HTTP servers for
+the network tests. `./test.sh -k users` runs one; `--keep` keeps logs.
+Takes ~1.5 minutes; run it before calling work done.
 
 Scripted end-to-end test pattern (boot, type, screenshot — all headless):
 
@@ -96,7 +121,7 @@ FAT32 writes can be verified from the host without booting:
 
 | Value | Defined in | Must match |
 |-------|-----------|------------|
-| Kernel slot = 256 sectors at LBA 2 | `build.sh` | loop count in `kernel/kernel.asm`, recovery LBA 258 in `boot/boot.asm` |
+| Kernel slot `KERNEL_SECTORS` at LBA 2 | `build.sh` (passed to NASM with `-D`) | used by `kernel/kernel.asm` (load loop) and `boot/boot.asm` (recovery LBA); must stay ≤ 640 so the load (at 0x1000) stays below the VBR at 0x90000 |
 | User virtual base 0x40000000 (`USER_BASE`) | `kernel/paging.h` | link address in `user/user.ld` |
 | Frame pool 10–16 MB, heap 1–9 MB | `kernel/paging.h`, `kernel/memory.h` | must not overlap; both inside the 16 MB identity map |
 | Kernel selectors 0x08/0x10 | `kernel/gdt.c` | `kernel/kernel.asm` GDT, all interrupt stubs, `entry.asm` |
@@ -141,6 +166,9 @@ FAT32 writes can be verified from the host without booting:
   with `vfs_release()` — FAT32 hands out heap nodes.
 - User programs: any inline `int 0x80` must clobber `"memory"` (see
   `user/syscall.h`), or GCC drops stores to buffers the kernel reads.
+- Text is **Latin-1** (one byte per char; ñ = 0xF1). Compare/fold case
+  with `latin1_lower`, draw with `latin1_glyph`; chars ≥ 0x80 are
+  negative as `char`, so cast to `uint8_t` before range checks.
 - `term_grid` rows have a stride of `MAX_TERM_COLS`, not `term_cols`:
   clear/scroll it row by row or by `sizeof`, never as a flat
   `term_rows * term_cols` block.

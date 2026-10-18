@@ -2,6 +2,7 @@
 #include "ports.h"
 #include "graphics.h"
 #include "util.h"
+#include "latin1.h"
 
 int cursor_x = 0;
 int cursor_y = 0;
@@ -28,6 +29,19 @@ void update_cursor() {
     port_byte_out(0x3D5, (uint8_t)((position >> 8) & 0xFF));
     port_byte_out(0x3D4, 0x0F);
     port_byte_out(0x3D5, (uint8_t)(position & 0xFF));
+}
+
+void vga_put(int col, int row, char c, uint8_t attr) {
+    if (is_graphical_mode() || col < 0 || row < 0 || col >= MAX_COLS || row >= MAX_ROWS) return;
+    char* v = (char*)VIDEO_ADDRESS + (row * MAX_COLS + col) * 2;
+    v[0] = latin1_to_cp437((uint8_t)c);
+    v[1] = attr;
+}
+
+void vga_set_cursor(int col, int row) {
+    cursor_x = col;
+    cursor_y = row;
+    update_cursor();
 }
 
 void clear_vga_text() {
@@ -73,6 +87,11 @@ void scroll() {
 }
 
 void print_char(char character, char attribute) {
+    // Mirror every console character to the debug port: QEMU's -debugcon
+    // logs it, which is how tests/kaos_test.py reads the whole session
+    // (real hardware ignores the port).
+    port_byte_out(0xE9, (uint8_t)character);
+
     if (print_sink) {
         print_sink(character);
         return;
@@ -99,7 +118,7 @@ void print_char(char character, char attribute) {
         } else {
             char* video_memory = (char*) VIDEO_ADDRESS;
             int offset = (cursor_y * max_cols + cursor_x) * 2;
-            video_memory[offset] = character;
+            video_memory[offset] = latin1_to_cp437((uint8_t)character);
             video_memory[offset + 1] = attribute;
         }
         cursor_x++;

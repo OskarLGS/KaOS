@@ -132,19 +132,32 @@ From bare metal to a full operating system.
       (`ping`) → UDP → DHCP (al arrancar) → DNS (`host`) → TCP (cliente).
 - [x] **App de red**: `fetch host[:port]/ruta [> fichero]` (HTTP/1.0);
       verificado con una descarga de 63 KB idéntica byte a byte.
+- [x] **Sockets para programas**: `SYS_CONNECT`/`SYS_RESOLVE`; el socket
+      es un descriptor más (read/write/close). Demo: `wget.elf` en Ring 3.
+- [x] **Servidor TCP**: `listen`/`accept` para programas; `httpd.elf`
+      sirve `disk/www` y se ve desde el navegador del host (hostfwd).
+- [x] **Kernel más grande**: el hueco del kernel es un único parámetro
+      (`KERNEL_SECTORS` en build.sh), ahora 256 KB.
 - [ ] **Self-hosting**: Compilarse a sí mismo (necesita un compilador C
       portado... el jefe final).
 
 ---
 
 ## 🔧 Transversal (cuando toque)
-- [ ] Layout de teclado ES (hoy: US; la ñ espera su momento).
-- [ ] `panic()` con volcado de registros legible en vez de colgarse.
-- [ ] Liberar la memoria de los `fs_node_t` creados por `finddir`
-      (hoy se filtran — no hay `close` real).
-- [ ] Soporte de teclas extendidas (E0: flechas, supr, inicio/fin).
-- [ ] Build reproducible con tests automáticos (el patrón headless de
-      AGENTS.md convertido en script `test.sh`).
+- [x] Layout de teclado ES: `keymap es` (ñ, ç, ¿¡, AltGr, teclas
+      muertas para tildes); texto en Latin-1 con glifos compuestos y
+      nombres largos FAT32 en Unicode.
+- [x] Editor de texto: `edit <ruta>` (pantalla completa en modo texto,
+      ventana en el escritorio; Ctrl+S / Ctrl+Q, respeta permisos).
+- [x] `panic()` legible: pantalla con excepción, CR2, registros, tarea y
+      CR3 (también en el escritorio, donde antes se congelaba sin mostrar
+      nada); `build/kernel.map` traduce el EIP a función.
+- [x] Liberar la memoria de los `fs_node_t` creados por `finddir`
+      (`vfs_release`).
+- [x] Soporte de teclas extendidas (E0: flechas, RePág/AvPág).
+- [x] Tests automáticos: `./test.sh` compila y ejecuta 5 sesiones de
+      QEMU (escritorio, ficheros, programas, usuarios, red) comprobando
+      la transcripción de consola y el disco desde el host.
 
 ---
 

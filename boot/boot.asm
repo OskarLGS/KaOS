@@ -199,7 +199,7 @@ part_1:
     dd 1
 part_2:
     db 0x00, 0, 0, 0, 0x83, 0, 0, 0
-    dd 258  ; Recovery at LBA 258 (after MBR + bridge + 256 kernel sectors)
+    dd 2 + KERNEL_SECTORS  ; Recovery right after MBR + bridge + kernel (build.sh -D)
     dd 1
 
 times 32 db 0 ; Empty partitions

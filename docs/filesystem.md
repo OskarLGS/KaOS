@@ -64,8 +64,9 @@ valid LFN run precedes it, else the 8.3 display name.
 entry, last part first (order number | 0x40), 13 UCS-2 characters each,
 plus a checksum of the 8.3 name. `dir_walk` accepts a run only if the
 order numbers count down to 1 without gaps and every checksum matches
-the short entry, so stale fragments are ignored. Characters outside
-ASCII show as `?`. Names are up to 127 characters.
+the short entry, so stale fragments are ignored. Names are Latin-1
+(UCS-2 below 0x100; anything above shows as `?`), up to 127 characters,
+compared case-insensitively including accented capitals.
 
 | Operation | What it does |
 |-----------|--------------|
@@ -82,6 +83,15 @@ over 127 chars) return `VFS_EBADNAME`.
 On mount, the FSInfo free-cluster count and next-free hint are set to
 "unknown" (0xFFFFFFFF): KaOS does not maintain them, so other systems
 recompute them.
+
+### Cluster validation
+
+Every cluster number read from the FAT or a directory entry is checked
+with `valid_cluster()` (2 .. last data cluster) before it becomes an LBA
+or is written into the FAT. End-of-chain stops a walk; anything else
+invalid (0, the "bad cluster" code `get_next_cluster` returns on a read
+error, a value past the disk) aborts the operation instead of writing
+to a random sector.
 
 ### Locking
 

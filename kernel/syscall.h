@@ -15,6 +15,11 @@
 #define SYS_GETPID  20
 #define SYS_SBRK    45
 #define SYS_SLEEP   162
+// KaOS-specific (no Linux equivalent with this shape)
+#define SYS_CONNECT 300   // ebx = IPv4 (network order), ecx = port -> fd
+#define SYS_RESOLVE 301   // ebx = host name, ecx = &ip -> 0 / -1
+#define SYS_LISTEN  302   // ebx = port -> listening fd (-1, -2 port in use)
+#define SYS_ACCEPT  303   // ebx = listening fd -> connection fd (blocks)
 
 // SYS_OPEN flags (Linux values)
 #define O_RDONLY  0x000

@@ -117,6 +117,13 @@ void wm_hide(window_t* win) {
     if (idx >= 0 && idx < win_count) minimize_window(idx);
 }
 
+static void activate_window(int i);
+
+void wm_show(window_t* win) {
+    int idx = (int)(win - windows);
+    if (idx >= 0 && idx < win_count) activate_window(idx);
+}
+
 window_t* wm_get_focused() {
     if (focused_win < 0) return 0;
     return &windows[focused_win];

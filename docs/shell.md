@@ -23,6 +23,23 @@ History keeps the last 16 distinct commands (`HISTORY_SIZE`), skipping
 immediate repeats. The graphical terminal additionally scrolls back with
 PgUp/PgDn (see graphics.md).
 
+## Text editor (kernel/editor.c)
+
+`edit <path>` opens a file (created on the first save if missing):
+full screen in text mode, in the **Editor** window on the desktop.
+
+| Key | |
+|-----|-|
+| arrows, Home/End, PgUp/PgDn | Move |
+| Backspace / Delete | Erase before / at the cursor |
+| Enter, Tab (4 spaces) | Insert |
+| Ctrl+S | Save (respects path permissions) |
+| Ctrl+Q | Close; with unsaved changes it asks for a second Ctrl+Q |
+
+The status bar shows the file, `[modified]`, line and column. Files up
+to 32 KB; DOS line ends are converted on load. Save outcomes are also
+written to the debug port (`[edit] Saved N bytes.`) for the tests.
+
 ## Commands
 
 `help` lists everything registered. Commands live in modules under

@@ -12,6 +12,12 @@ KERNEL_DIR="kernel"
 BUILD_DIR="build"
 OUTPUT="kaos.img"
 
+# Kernel slot on the floppy, in 512-byte sectors. The VBR loads it at
+# physical 0x1000, so it must stay well below the VBR itself at 0x90000
+# (640 sectors max); 512 = 256 KB.
+KERNEL_SECTORS=512
+KERNEL_MAX=$((KERNEL_SECTORS * 512))
+
 # Create build dir
 mkdir -p "$BUILD_DIR"
 
@@ -27,11 +33,11 @@ CFLAGS="$CFLAGS -O2 -fno-strict-aliasing -march=i686"
 
 # Compile bootloader
 echo "[1/5] Compiling bootloader..."
-nasm -f bin "$BOOT_DIR/boot.asm" -o "$BUILD_DIR/boot.bin"
+nasm -f bin -D KERNEL_SECTORS=$KERNEL_SECTORS "$BOOT_DIR/boot.asm" -o "$BUILD_DIR/boot.bin"
 
 # Compile C kernel & drivers
 echo "[2/5] Compiling C kernel and drivers..."
-nasm -f bin "$KERNEL_DIR/kernel.asm" -o "$BUILD_DIR/kernel.bin"
+nasm -f bin -D KERNEL_SECTORS=$KERNEL_SECTORS "$KERNEL_DIR/kernel.asm" -o "$BUILD_DIR/kernel.bin"
 nasm -f elf32 "$KERNEL_DIR/entry.asm" -o "$BUILD_DIR/entry.o"
 nasm -f elf32 "$KERNEL_DIR/interrupts.asm" -o "$BUILD_DIR/interrupts.o"
 nasm -f elf32 "$KERNEL_DIR/task_switch.asm" -o "$BUILD_DIR/task_switch.o"
@@ -57,29 +63,36 @@ done
 
 ld -m elf_i386 -T "$KERNEL_DIR/linker.ld" "${OBJS[@]}" -o "$BUILD_DIR/full_kernel.bin"
 
+# Same link as ELF, only for its symbol table: build/kernel.map lists
+# every function's address, to turn a panic's EIP into a name.
+sed 's/OUTPUT_FORMAT("binary")//' "$KERNEL_DIR/linker.ld" > "$BUILD_DIR/linker_elf.tmp"
+ld -m elf_i386 --no-warn-rwx-segments -T "$BUILD_DIR/linker_elf.tmp" "${OBJS[@]}" \
+   -o "$BUILD_DIR/kernel-symbols.elf" 2>/dev/null
+nm -n "$BUILD_DIR/kernel-symbols.elf" | grep -i " t " > "$BUILD_DIR/kernel.map"
+rm -f "$BUILD_DIR/linker_elf.tmp"
+
 # Compile Recovery
 echo "[3/5] Compiling recovery..."
 nasm -f bin "$KERNEL_DIR/recovery.asm" -o "$BUILD_DIR/recovery.bin"
 
 # Combine into disk image
 echo "[4/5] Creating disk image..."
-# LBA 0       (sector 1):       MBR / KaBooM (512)
-# LBA 1       (sector 2):       Kernel Bridge / VBR (512)
-# LBA 2-257   (sectors 3-258):  C Kernel (256 * 512 = 131072)
-# LBA 258     (sector 259):     Recovery (512)
-# NOTE: kernel.asm loads exactly 256 sectors and boot.asm's partition
-# table points Recovery at LBA 258 — keep all three in sync.
+# LBA 0                  : MBR / KaBooM (512)
+# LBA 1                  : Kernel Bridge / VBR (512)
+# LBA 2 .. 2+N-1         : C Kernel (N = KERNEL_SECTORS)
+# LBA 2+N                : Recovery (512)
+# kernel.asm (load loop) and boot.asm (recovery LBA) get N via -D above.
 
-# Refuse to build if the kernel outgrew its 256-sector slot
+# Refuse to build if the kernel outgrew its slot
 KERNEL_SIZE=$(stat -c%s "$BUILD_DIR/full_kernel.bin")
-if [ "$KERNEL_SIZE" -gt 131072 ]; then
-  echo "ERROR: kernel is $KERNEL_SIZE bytes, exceeds 131072 (256 sectors)." >&2
-  echo "Increase the slot in build.sh, kernel.asm (sector count) and boot.asm (recovery LBA)." >&2
+if [ "$KERNEL_SIZE" -gt "$KERNEL_MAX" ]; then
+  echo "ERROR: kernel is $KERNEL_SIZE bytes, exceeds $KERNEL_MAX ($KERNEL_SECTORS sectors)." >&2
+  echo "Raise KERNEL_SECTORS at the top of build.sh." >&2
   exit 1
 fi
-echo "Kernel size: $KERNEL_SIZE / 131072 bytes"
+echo "Kernel size: $KERNEL_SIZE / $KERNEL_MAX bytes"
 
-truncate -s 131072 "$BUILD_DIR/full_kernel.bin"
+truncate -s "$KERNEL_MAX" "$BUILD_DIR/full_kernel.bin"
 
 nasm -f bin "$KERNEL_DIR/recovery.asm" -o "$BUILD_DIR/recovery.bin"
 truncate -s 512 "$BUILD_DIR/recovery.bin"

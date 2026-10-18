@@ -44,13 +44,44 @@ We only process key presses and ignore releases.
 
 | Key | Scancode | Delivered as |
 |-----|----------|--------------|
-| ↑ / ↓ | E0 48 / E0 50 | `KEY_UP` 0x11 / `KEY_DOWN` 0x12 |
-| ← / → | E0 4B / E0 4D | `KEY_LEFT` 0x13 / `KEY_RIGHT` 0x14 |
-| PgUp / PgDn | E0 49 / E0 51 | `KEY_PGUP` 0x15 / `KEY_PGDN` 0x16 |
+| ↑ / ↓ | E0 48 / E0 50 | `KEY_UP` 0x80 / `KEY_DOWN` 0x81 |
+| ← / → | E0 4B / E0 4D | `KEY_LEFT` 0x82 / `KEY_RIGHT` 0x83 |
+| PgUp / PgDn | E0 49 / E0 51 | `KEY_PGUP` 0x84 / `KEY_PGDN` 0x85 |
+| Home / End / Delete | E0 47 / E0 4F / E0 53 | `KEY_HOME` 0x86 / `KEY_END` 0x87 / `KEY_DEL` 0x88 |
 | Keypad Enter | E0 1C | `'\n'` |
+
+Key codes live in 0x80-0x8F because Latin-1 leaves 0x80-0x9F to
+control characters, never text. **Ctrl+letter** produces the classic
+control code (`CTRL('s')` = 0x13), except Ctrl+C, which the IRQ turns
+into "stop the foreground program". `key_is_text(c)` tells text from
+these codes.
 
 Extended releases and the fake-shift bytes some keys send are dropped.
 SYS_READ ignores these codes, so they never end up in a program's line.
+
+## Layouts: US and ES
+
+`keymap es` / `keymap us` switch layouts (root's choice is saved in
+`disk/etc/keymap` and loaded at boot, before the login prompt). The ES
+layout maps the same scan codes to Spanish symbols, in **Latin-1**:
+
+| Feature | Details |
+|---------|---------|
+| Letters | ñ Ñ ç Ç on their own keys |
+| Symbols | ¡ ¿ º ª · and `' + - < >` in their Spanish places |
+| AltGr (right Alt, `E0 38`) | `\| @ # ~ ¬ [ ] { } \\` |
+| Dead keys | `´` `` ` `` `^` `¨`: the next vowel gets the accent (á à â ä); space gives the accent itself; any other key gives accent + key |
+
+## Text encoding (kernel/latin1.c)
+
+Text is one byte per character, Latin-1 (ISO-8859-1). The graphical
+font is ASCII; `latin1_glyph()` builds the accented letters by drawing
+the accent over the base letter (lowercase: in the two empty top rows;
+capitals: moved down one row) plus hand-drawn ¡ ¿ º ª · ¬ ´ ¨. VGA text
+mode converts to the card's CP437 (`latin1_to_cp437`, unaccented letter
+when CP437 lacks one). FAT32 long names store Latin-1 as the same
+Unicode code points, so other systems see `año.txt` correctly; file
+*contents* stay Latin-1 bytes.
 
 ## Input Buffer
 

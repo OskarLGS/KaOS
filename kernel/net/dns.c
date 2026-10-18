@@ -51,10 +51,35 @@ static void dns_handler(uint32_t src, uint16_t sport, const uint8_t* d, uint32_t
     answered = 1;
 }
 
+// One lookup at a time: the query buffer, the port binding and the
+// answer slots are shared. A waiter whose holder died takes over.
+static volatile int lock_owner = -1;
+
+static void dns_lock() {
+    while (1) {
+        uint32_t f = net_lock();
+        if (lock_owner < 0 || !task_alive(lock_owner)) {
+            lock_owner = get_current_task_id();
+            net_unlock(f);
+            return;
+        }
+        net_unlock(f);
+        task_sleep(1);
+    }
+}
+
+static int lookup(const char* name, uint32_t* ip);
+
 int dns_resolve(const char* name, uint32_t* ip) {
     if (str_to_ip(name, ip)) return 1;            // Already an address
     if (!netif.up || !netif.dns) return 0;
+    dns_lock();
+    int ok = lookup(name, ip);
+    lock_owner = -1;
+    return ok;
+}
 
+static int lookup(const char* name, uint32_t* ip) {
     // Query: header + QNAME (labels) + QTYPE A + QCLASS IN
     static uint8_t q[300];
     uint32_t n = 0;

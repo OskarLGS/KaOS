@@ -12,6 +12,7 @@
 #include "isr.h"
 #include "keyboard.h"
 #include "users.h"
+#include "editor.h"
 
 static command_t commands[MAX_COMMANDS];
 static int num_commands = 0;
@@ -122,7 +123,8 @@ void shell_handler(char* input) {
         print_string("'\nType 'help' for a list of commands.\n");
     }
 
-    if (!job_pid && !ask_hook) print_prompt();   // Not while a question is pending
+    // Not while a question is pending or the full-screen editor is open
+    if (!job_pid && !ask_hook && !editor_active()) print_prompt();
 }
 
 void shell_set_clear_hook(void (*hook)()) {
@@ -174,6 +176,10 @@ static void history_browse(int dir) {
 }
 
 void shell_input_key(char c) {
+    if (editor_active()) {          // Full-screen editor owns the keys
+        editor_key(c);
+        return;
+    }
     if (c == '\n') {
         print_string("\n");
         // Run a copy: the command may print and we reset `line` first
@@ -200,7 +206,7 @@ void shell_input_key(char c) {
         history_browse(+1);
     } else if (c == KEY_DOWN && !ask_hook) {
         history_browse(-1);
-    } else if ((uint8_t)c >= 0x20 || c == '\t') {
+    } else if (key_is_text(c) || c == '\t') {
         if (strlen(line) < SHELL_LINE_MAX - 2) {
             char s[2] = { ask_secret ? '*' : c, '\0' };
             append(line, c);
@@ -369,8 +375,11 @@ static void setup_password(char* pw) {
     shell_ask("Retype it: ", 1, setup_retype);
 }
 
+void keymap_load();
+
 void shell_begin() {
     int r = users_init();
+    if (r >= 0) keymap_load();      // Before the login prompt: type in your layout
     if (r < 0) {
         // No disk: nowhere to keep accounts
         shell_set_user("root", UID_ROOT);

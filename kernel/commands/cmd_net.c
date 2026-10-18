@@ -319,8 +319,12 @@ static void fetch_job() {
             if (matched == 4) in_headers = 0;
         }
         if (i < n) {
-            if (out) write_fs(out, body, n - i, (uint8_t*)buf + i);
-            else print_body(buf + i, n - i);
+            if (out && write_fs(out, body, n - i, (uint8_t*)buf + i) != (uint32_t)(n - i)) {
+                print_string("fetch: writing the file failed\n");
+                failed = 1;
+                break;
+            }
+            if (!out) print_body(buf + i, n - i);
             body += n - i;
         }
     }

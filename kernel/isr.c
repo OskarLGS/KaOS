@@ -3,6 +3,7 @@
 #include "screen.h"
 #include "task.h"
 #include "ports.h"
+#include "panic.h"
 
 // ISR handlers defined in assembly
 extern void isr0(); extern void isr1(); extern void isr2(); extern void isr3();
@@ -86,6 +87,9 @@ static void print_hex(uint32_t v) {
 }
 
 void isr_handler(struct registers* r) {
+    // A fault in the kernel itself: nothing to contain, stop with a report
+    if ((r->cs & 0x3) != 3) panic("unhandled exception in the kernel", r);
+
     print_string("\n--- EXCEPTION DETECTED ---\n");
     print_string(exception_messages[r->int_no]);
 
@@ -107,9 +111,7 @@ void isr_handler(struct registers* r) {
         task_exit((int)r->int_no, EXIT_FAULT);
     }
 
-    print_string("\nKERNEL PANIC. Halting.\n");
-    __asm__ __volatile__("cli");
-    while(1) __asm__ __volatile__("hlt");
+    panic("unexpected exception", r);    // Not reached: Ring 3 returns above
 }
 
 irq_handler_t irq_handlers[16];

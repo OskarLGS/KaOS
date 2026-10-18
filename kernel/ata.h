@@ -6,5 +6,6 @@
 int ata_read_sector(uint32_t lba, uint8_t* buffer);
 int ata_write_sector(uint32_t lba, const uint8_t* buffer);
 int ata_identify();
+int ata_flush();     // Commit the drive's write cache
 
 #endif
