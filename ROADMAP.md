@@ -145,6 +145,8 @@ From bare metal to a full operating system.
 - [x] Layout de teclado ES: `keymap es` (ñ, ç, ¿¡, AltGr, teclas
       muertas para tildes); texto en Latin-1 con glifos compuestos y
       nombres largos FAT32 en Unicode.
+- [x] Editor de texto: `edit <ruta>` (pantalla completa en modo texto,
+      ventana en el escritorio; Ctrl+S / Ctrl+Q, respeta permisos).
 - [x] `panic()` legible: pantalla con excepción, CR2, registros, tarea y
       CR3 (también en el escritorio, donde antes se congelaba sin mostrar
       nada); `build/kernel.map` traduce el EIP a función.

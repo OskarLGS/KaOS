@@ -82,8 +82,9 @@ on purpose to try it.
 
 ## Automated tests
 
-`./test.sh` builds and runs `tests/kaos_test.py`: seven QEMU sessions
-(desktop, files, programs, users, network, ES keyboard, panic), each on a throw-away copy
+`./test.sh` builds and runs `tests/kaos_test.py`: eight QEMU sessions
+(desktop, files, programs, users, network, ES keyboard, panic, editor),
+each on a throw-away copy
 of `build/fat32.img` (your disk is never touched), driven through the
 QEMU monitor and checked against the console transcript, plus host-side
 checks (mtools, `cmp`, `fsck.fat`). It starts its own HTTP servers for

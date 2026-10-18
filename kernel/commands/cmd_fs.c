@@ -4,6 +4,8 @@
 #include "../screen.h"
 #include "../task.h"
 #include "../users.h"
+#include "../editor.h"
+#include "../graphics.h"
 
 #define BAD_NAME_MSG "Invalid name (up to 127 chars, none of \\ / : * ? \" < > |).\n"
 
@@ -327,7 +329,15 @@ static void cmd_mv(char* args) {
     vfs_release(src_dir);
 }
 
+static void cmd_edit(char* args) {
+    char* p = skip_spaces(args);
+    if (!*p) { print_string("Usage: edit <path>\n"); return; }
+    if (editor_open(p) == 0 && is_graphical_mode())
+        print_string("Editing in the Editor window (Ctrl+S save, Ctrl+Q close).\n");
+}
+
 void init_cmd_fs() {
+    register_command("edit", "Text editor (edit disk/home/me/notes.txt)", cmd_edit);
     register_command("ls", "List files in directory", cmd_ls);
     register_command("cat", "Print file contents", cmd_cat);
     register_command("echo", "Write to file (echo msg > file)", cmd_echo);

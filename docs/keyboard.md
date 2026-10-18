@@ -44,10 +44,17 @@ We only process key presses and ignore releases.
 
 | Key | Scancode | Delivered as |
 |-----|----------|--------------|
-| ↑ / ↓ | E0 48 / E0 50 | `KEY_UP` 0x11 / `KEY_DOWN` 0x12 |
-| ← / → | E0 4B / E0 4D | `KEY_LEFT` 0x13 / `KEY_RIGHT` 0x14 |
-| PgUp / PgDn | E0 49 / E0 51 | `KEY_PGUP` 0x15 / `KEY_PGDN` 0x16 |
+| ↑ / ↓ | E0 48 / E0 50 | `KEY_UP` 0x80 / `KEY_DOWN` 0x81 |
+| ← / → | E0 4B / E0 4D | `KEY_LEFT` 0x82 / `KEY_RIGHT` 0x83 |
+| PgUp / PgDn | E0 49 / E0 51 | `KEY_PGUP` 0x84 / `KEY_PGDN` 0x85 |
+| Home / End / Delete | E0 47 / E0 4F / E0 53 | `KEY_HOME` 0x86 / `KEY_END` 0x87 / `KEY_DEL` 0x88 |
 | Keypad Enter | E0 1C | `'\n'` |
+
+Key codes live in 0x80-0x8F because Latin-1 leaves 0x80-0x9F to
+control characters, never text. **Ctrl+letter** produces the classic
+control code (`CTRL('s')` = 0x13), except Ctrl+C, which the IRQ turns
+into "stop the foreground program". `key_is_text(c)` tells text from
+these codes.
 
 Extended releases and the fake-shift bytes some keys send are dropped.
 SYS_READ ignores these codes, so they never end up in a program's line.

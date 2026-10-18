@@ -362,8 +362,51 @@ def test_panic(ctx):
         raise Fail(f"EIP {eip:#x} maps to {owner}, expected cmd_panic")
 
 
+def test_editor(ctx):
+    k, disk = session(ctx, "editor", net=False)
+
+    def keys(*names):
+        for n in names:
+            k.key(n, 0.06)
+
+    try:
+        k.run("edit disk/tmp/nota.txt", "[edit] opened")
+        k.type("Primera linea\ntercera")
+        keys("ctrl-s"); k.expect("[edit] Saved 21 bytes.")
+        keys("up", "end", "ret"); k.type("segunda")             # Insert in the middle
+        keys("ctrl-s"); k.expect("[edit] Saved 29 bytes.")
+        keys("ctrl-q"); k.expect("[edit] closed")
+        k.run("cat disk/tmp/nota.txt", "Primera linea\nsegunda\ntercera")
+
+        # Shrink the file: the rest must really go (size from the host)
+        k.run("edit disk/tmp/nota.txt", "[edit] opened")
+        keys("down", "end", *(["backspace"] * 7), "delete", *(["delete"] * 7))  # Drop "segunda\ntercera"
+        keys("ctrl-s"); k.expect("[edit] Saved 14 bytes.")
+        k.type("x")
+        keys("ctrl-q")                                          # Unsaved: first Ctrl+Q only warns
+        time.sleep(0.5)
+        if "[edit] closed" in k.output()[k.pos:]:
+            raise Fail("Ctrl+Q closed despite unsaved changes")
+        keys("ctrl-q"); k.expect("[edit] closed")
+
+        # A normal user can open but not save outside home / tmp
+        k.run("useradd " + USER, "Password for the new user: ")
+        k.line(USER_PW); k.expect("Retype it: ")
+        k.line(USER_PW); k.expect("Created " + USER)
+        k.run("su " + USER)
+        k.run("edit disk/hello.txt", "[edit] opened")
+        k.type("x"); keys("ctrl-s"); k.expect("[edit] Permission denied: not saved.")
+        keys("ctrl-q", "ctrl-q"); k.expect("[edit] closed")
+    finally:
+        k.close()
+    if mtype(disk, "/tmp/nota.txt") != b"Primera linea\n":
+        raise Fail("edited file has the wrong contents: %r" % mtype(disk, "/tmp/nota.txt"))
+    if b"x" in mtype(disk, "/hello.txt")[:1]:
+        raise Fail("user's change to disk/hello.txt was saved")
+
+
 TESTS = [test_gui_boot, test_shell_and_files, test_programs, test_users, test_network,
-         test_keymap_es, test_panic]
+         test_keymap_es, test_panic, test_editor]
 
 
 class Ctx:
@@ -374,11 +417,13 @@ class Ctx:
         self.base = os.path.join(ROOT, "build", "fat32.img")
 
     def fresh_disk(self, name):
-        """Copy of the built disk without accounts (first boot)."""
+        """Copy of the built disk as a first boot would find it: no
+        accounts and none of the directories KaOS creates (whatever your
+        own sessions left in build/fat32.img doesn't leak into tests)."""
         d = os.path.join(self.tmp, f"disk-{name}.img")
         shutil.copy(self.base, d)
-        for p in ("/etc/passwd",):
-            subprocess.run(["mdel", "-i", d, "::" + p], capture_output=True)
+        subprocess.run(["mdeltree", "-i", d, "::/etc", "::/home", "::/tmp"],
+                       capture_output=True)
         return d
 
 
@@ -388,7 +433,7 @@ def main():
     ap.add_argument("--keep", action="store_true", help="keep the temp dir (logs, disks)")
     args = ap.parse_args()
 
-    for tool in ("qemu-system-i386", "mtype", "mdel", "fsck.fat"):
+    for tool in ("qemu-system-i386", "mtype", "mdeltree", "fsck.fat"):
         if not shutil.which(tool):
             sys.exit(f"missing tool: {tool} (apt install qemu-system-x86 mtools dosfstools)")
 

@@ -151,7 +151,7 @@ static void key_es(uint8_t scancode) {
 }
 
 // Second byte of E0-prefixed make codes -> KEY_* code (0 = ignore)
-static char extended_key(uint8_t scancode) {
+static uint8_t extended_key(uint8_t scancode) {
     switch (scancode) {
         case 0x48: return KEY_UP;
         case 0x50: return KEY_DOWN;
@@ -159,6 +159,9 @@ static char extended_key(uint8_t scancode) {
         case 0x4D: return KEY_RIGHT;
         case 0x49: return KEY_PGUP;
         case 0x51: return KEY_PGDN;
+        case 0x47: return KEY_HOME;
+        case 0x4F: return KEY_END;
+        case 0x53: return KEY_DEL;
         case 0x1C: return '\n';   // Keypad Enter
         default:   return 0;
     }
@@ -182,8 +185,8 @@ static void keyboard_callback(struct registers* regs) {
             return;
         }
         if (scancode & 0x80) return;              // Extended key release
-        char k = extended_key(scancode);
-        if (k) ring_buffer[head++] = k;
+        uint8_t k = extended_key(scancode);
+        if (k) ring_buffer[head++] = (char)k;
         return;
     }
 
@@ -205,6 +208,14 @@ static void keyboard_callback(struct registers* regs) {
     if (ctrl_down && scancode == SCAN_C) {
         int fg = get_foreground();
         if (fg) kill_with(fg, EXIT_INTERRUPTED);
+        return;
+    }
+
+    // Other Ctrl+letter: the classic control code (Ctrl+S = 0x13), by the
+    // letter on the US key (same physical key in ES for A-Z)
+    if (ctrl_down && scancode < sizeof(scancode_ascii)) {
+        char l = scancode_ascii[scancode];
+        if (l >= 'a' && l <= 'z') ring_buffer[head++] = CTRL(l);
         return;
     }
 

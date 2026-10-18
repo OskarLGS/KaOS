@@ -31,6 +31,19 @@ void update_cursor() {
     port_byte_out(0x3D5, (uint8_t)(position & 0xFF));
 }
 
+void vga_put(int col, int row, char c, uint8_t attr) {
+    if (is_graphical_mode() || col < 0 || row < 0 || col >= MAX_COLS || row >= MAX_ROWS) return;
+    char* v = (char*)VIDEO_ADDRESS + (row * MAX_COLS + col) * 2;
+    v[0] = latin1_to_cp437((uint8_t)c);
+    v[1] = attr;
+}
+
+void vga_set_cursor(int col, int row) {
+    cursor_x = col;
+    cursor_y = row;
+    update_cursor();
+}
+
 void clear_vga_text() {
     if (is_graphical_mode()) {
         max_cols = 100; // 800 / 8

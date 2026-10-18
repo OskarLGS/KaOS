@@ -38,6 +38,7 @@ void wm_draw_all();
 void wm_draw_desktop();
 window_t* wm_get_focused();
 void wm_hide(window_t* win);   // Like the close button: reopen from the menu
+void wm_show(window_t* win);   // Make visible, focus and raise
 
 // Input — call these from the main loop
 void wm_on_mouse_move(int x, int y);

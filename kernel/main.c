@@ -15,6 +15,7 @@
 #include "terminal.h"
 #include "rtc.h"
 #include "files.h"
+#include "editor.h"
 #include "net/net.h"
 
 // ─── Debug helper ─────────────────────────────────────────────────────────────
@@ -84,6 +85,10 @@ static void run_desktop() {
     window_t* files = wm_create(120, 110, 340, 300, "Files");
     files_init(files);
     if (files) wm_hide(files);
+    // Text editor window: shown by the `edit` command
+    window_t* ed = wm_create(130, 70, 560, 420, "Editor");
+    editor_attach_window(ed);
+    if (ed) wm_hide(ed);
     dbg('W'); // windows created
 
     static uint8_t prev_buttons = 0;
