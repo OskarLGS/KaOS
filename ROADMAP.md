@@ -123,7 +123,10 @@ From bare metal to a full operating system.
 
 ## 🌑 Fase 8: Sistema Multi-Usuario y Red (en progreso)
 ### Meta: Lo que conocemos como un SO moderno.
-- [ ] **Cuentas de Usuario**: Login, contraseñas y permisos en el VFS.
+- [x] **Cuentas de Usuario**: login (texto y escritorio), contraseñas
+      con SHA-256 iterado y sal en `disk/etc/passwd`, `su`/`passwd`/
+      `useradd`/`logout`, uid por proceso y permisos por ruta (cada usuario
+      escribe en su home y `disk/tmp`; `passwd` solo lo lee root).
 - [x] **Driver de red**: RTL8139 (PCI, DMA, sondeado por la tarea `net`).
 - [x] **Pila de red por capas**: Ethernet → ARP → IPv4 → ICMP
       (`ping`) → UDP → DHCP (al arrancar) → DNS (`host`) → TCP (cliente).

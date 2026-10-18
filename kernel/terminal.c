@@ -178,7 +178,7 @@ void terminal_init(window_t* win) {
 
     term_clear();
     term_print("KaOS Terminal\n");
-    term_print("Type 'help' for a list of commands.\n\n> ");
+    term_print("Type 'help' for a list of commands.\n");
 
     // The terminal is the desktop's only console: keep it as the print sink
     // permanently, so user programs (which print from their own task, after
@@ -187,6 +187,8 @@ void terminal_init(window_t* win) {
 
     // `clear` typed here wipes this window, not the fullscreen console
     shell_set_clear_hook(term_clear);
+
+    shell_begin();     // Login prompt (or first-boot setup) in this window
 }
 
 void terminal_handle_key(char c) {

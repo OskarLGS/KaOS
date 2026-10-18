@@ -1,6 +1,8 @@
 #ifndef SHELL_H
 #define SHELL_H
 
+#include <stdint.h>
+
 #define MAX_COMMANDS 48
 #define MAX_ARGS 16
 #define SHELL_LINE_MAX 256
@@ -38,6 +40,14 @@ void shell_poll();
 // Enter runs the line; Up/Down walk the command history.
 void shell_input_key(char c);
 
+// Accounts: start the session (first-boot setup, or the login prompt)
+void shell_begin();
+void shell_login_prompt();
+// Ask a question: the next line goes to `hook` (secret: echoed as '*')
+void shell_ask(const char* prompt, int secret, void (*hook)(char* line));
+const char* shell_user();
+void shell_set_user(const char* name, uint32_t uid);
+
 // Optional hook for `clear` (the graphical terminal clears its window);
 // without one, `clear` wipes the fullscreen console.
 void shell_set_clear_hook(void (*hook)());
@@ -49,5 +59,6 @@ void init_cmd_fs();
 void init_cmd_mem();
 void init_cmd_task();
 void init_cmd_net();
+void init_cmd_users();
 
 #endif

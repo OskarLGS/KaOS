@@ -6,6 +6,7 @@
 #include "timer.h"
 #include "vfs.h"
 #include "util.h"
+#include "users.h"
 
 // A Ring 3 program supplies raw pointers/lengths. Before the kernel
 // dereferences them we must confirm the whole range lies in pages the
@@ -38,6 +39,11 @@ static file_t* get_file(uint32_t fd) {
 static int sys_open(uint32_t upath, uint32_t flags) {
     char path[VFS_PATH_MAX];
     if (copy_user_string(path, upath, sizeof(path)) != 0) return -1;
+
+    // Path-based permissions for the calling process's user
+    int writing = (flags & O_ACCMODE) != O_RDONLY || (flags & O_CREAT);
+    if (writing ? !perm_write(current_uid(), path) : !perm_read(current_uid(), path))
+        return -1;
 
     task_t* t = current_task_ptr();
     int fd = -1;

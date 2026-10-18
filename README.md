@@ -65,6 +65,14 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
 3. Optionally attach `build/fat32.img` as a hard disk.
 4. Boot order: floppy first.
 
+## First boot and login
+
+With a fresh `build/fat32.img` KaOS asks for a **root password** (twice)
+and creates `disk/etc`, `disk/home` and `disk/tmp`. After that every
+session starts at `KaOS login:`. Add users as root with `useradd <name>`;
+each user can write only in `disk/home/<name>` and `disk/tmp`.
+See [docs/users.md](docs/users.md).
+
 ## Boot Menu (KaBooM)
 
 | Option | Mode |
@@ -103,6 +111,8 @@ Click inside the window to capture the mouse, `Ctrl+Alt+G` to release.
   windows, and a full **graphical terminal** running the shell (with
   scroll-back on PgUp/PgDn).
 - **Shell** — command history with ↑/↓ in text mode and on the desktop.
+- **Users** — login, salted SHA-256 passwords, `su`, `passwd`,
+  `useradd`, per-process uid and path-based permissions.
 
 ## Shell Commands
 
@@ -123,6 +133,9 @@ spin      Preemption demo (CPU-bound task)
 ifconfig  Network settings               ping      Ping a host
 host      DNS lookup                     fetch     HTTP GET (fetch 10.0.2.2:8080/f.txt)
 arp       ARP cache                      dhcp      Renew the address
+whoami    Current user                   users     List accounts
+su        Switch user                    passwd    Change password
+useradd   Add a user (root)              logout    End the session
 ```
 
 ## Documentation

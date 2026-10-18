@@ -5,6 +5,7 @@
 #include "../timer.h"
 #include "../net/net.h"
 #include "../vfs.h"
+#include "../users.h"
 
 // "label value\n" in one atomic print
 static void print_field(const char* label, const char* value) {
@@ -237,6 +238,10 @@ static void fetch_job() {
     if (!*a || (save && !*save)) {
         print_string("Usage: fetch [http://]host[:port][/path] [> file]\n");
         task_exit(2, EXIT_NORMAL);
+    }
+    if (save && !perm_write(current_uid(), save)) {
+        print_string("fetch: permission denied for that file\n");
+        task_exit(1, EXIT_NORMAL);
     }
 
     // URL -> host, port, path

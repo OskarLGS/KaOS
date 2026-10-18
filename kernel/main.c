@@ -185,8 +185,8 @@ void kernel_main() {
         run_desktop(); // never returns
     }
 
-    // Text-mode shell loop
-    print_string("> ");
+    // Text-mode shell loop: log in (or first-boot setup) first
+    shell_begin();
 
     while(1) {
         // Stop consuming keys while a foreground program owns the keyboard

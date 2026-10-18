@@ -156,6 +156,12 @@ Network tests: QEMU's 10.0.2.2 is the host's loopback, so run
 answer. Don't stop test servers with `pkill -f <pattern>` from a shell
 whose own command line contains the pattern — it kills that shell.
 
+Accounts: a fresh `build/fat32.img` boots into first-boot setup (type
+the root password twice), later boots into `KaOS login:`. Scripted tests
+must log in first (type the user name + `ret`, then the password +
+`ret`). To start over without accounts: `mdel -i build/fat32.img
+::/etc/passwd`.
+
 ## Quick smoke test before calling work done
 
 1. `bash build.sh` — builds clean, kernel size under limit.

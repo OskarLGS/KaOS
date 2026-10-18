@@ -34,6 +34,7 @@ void tasking_init() {
     copy_name(tasks[0].name, "shell");
     tasks[0].id = next_pid++;
     tasks[0].state = TASK_RUNNING;
+    tasks[0].uid = 65535;            // Nobody, until someone logs in
     tasks[0].esp = 0; 
     task_count = 1;
     current_task = 0;
@@ -76,6 +77,7 @@ int create_task(const char* name, void (*entry)()) {
     t->exit_code = 0;
     t->exit_kind = EXIT_NORMAL;
     t->keep_status = 0;
+    t->uid = tasks[current_task].uid; // Children run as their creator
     t->wake_tick = 0;
     t->user_brk = 0;
     t->heap_base = 0;
@@ -201,6 +203,14 @@ int get_task_count() {
 task_t* get_task(int index) {
     if (index < 0 || index >= task_count) return 0;
     return &tasks[index];
+}
+
+uint32_t current_uid() {
+    return tasks[current_task].uid;
+}
+
+void task_set_uid(uint32_t uid) {
+    tasks[current_task].uid = uid;
 }
 
 task_t* current_task_ptr() {
